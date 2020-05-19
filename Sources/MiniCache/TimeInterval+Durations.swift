@@ -22,7 +22,7 @@
 
 import Foundation
 
-func timeInterval(hours: Int = 0, days: Int = 0) -> TimeInterval {
+public func timeInterval(hours: Int = 0, days: Int = 0) -> TimeInterval {
     let hours = TimeInterval(hours + days * 24)
     return hours * 60 * 60
 }
