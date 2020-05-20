@@ -161,7 +161,7 @@ public class MiniCache {
     }
 
     public static var defaultMaxAge: TimeInterval {
-        TimeInterval(7 * 24 * 60 * 60)
+        timeInterval(days: 7)
     }
 
 }
