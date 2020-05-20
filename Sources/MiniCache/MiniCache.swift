@@ -26,12 +26,13 @@ import Foundation
 
 public class MiniCacheStorage<Key: Codable, Value: Codable> {
 
-    private let cache: String
-    private let cacheVersion: String
-    private let maxAge: TimeInterval
-    private let managedObjectContext: NSManagedObjectContext
-    private let jsonEncoder = JSONEncoder()
-    private let jsonDecoder = JSONDecoder()
+    let cache: String
+    let cacheVersion: String
+    let maxAge: TimeInterval
+    let managedObjectContext: NSManagedObjectContext
+    let jsonEncoder = JSONEncoder()
+    let jsonDecoder = JSONDecoder()
+    var clock = { Date() }
 
     fileprivate init(cache: String, cacheVersion: String, maxAge: TimeInterval, managedObjectContext: NSManagedObjectContext) {
         self.cache = cache
@@ -46,24 +47,24 @@ public class MiniCacheStorage<Key: Codable, Value: Codable> {
             return try! self.jsonDecoder.decode(Value.self, from: entry.value!.data(using: .utf8)!)
         }
         set {
-            if let newValue = newValue {
-                self.setObject(newValue, forKey: key, validUntil: Date().addingTimeInterval(self.maxAge))
-            }
-            // TODO: support deletion?
+            self.setObject(newValue, forKey: key, validUntil: self.clock().addingTimeInterval(self.maxAge))
         }
     }
 
-    public func setObject(_ value: Value, forKey key: Key, validUntil: Date) {
-        if let entry = fetchEntry(forKey: key) {
-            entry.value = self.encode(value)
-        } else {
-            let entry = CacheEntry.create(in: self.managedObjectContext)
-            entry.cache = self.cache
-            entry.cacheVersion = self.cacheVersion
-            entry.key = self.encode(key)
-            entry.value = self.encode(value)
-            entry.date = validUntil
+    private func setObject(_ value: Value?, forKey key: Key, validUntil: Date) {
+        guard let value = value else {
+            if let entry = fetchEntry(forKey: key) {
+                self.managedObjectContext.delete(entry)
+                try! self.managedObjectContext.save()
+            }
+            return
         }
+        let entry = self.fetchEntry(forKey: key) ?? CacheEntry.create(in: self.managedObjectContext)
+        entry.cache = self.cache
+        entry.cacheVersion = self.cacheVersion
+        entry.key = self.encode(key)
+        entry.value = self.encode(value)
+        entry.date = self.clock()
         try! self.managedObjectContext.save()
     }
 
@@ -79,11 +80,9 @@ public class MiniCacheStorage<Key: Codable, Value: Codable> {
     }
 
     private func purgeExpiredEntries() {
-        let request: NSFetchRequest<CacheEntry> = CacheEntry.fetchRequest()
-        request.predicate = NSPredicate(format: "(cache == %@ && cacheVersion != %@) || date > %@", self.cache, self.cacheVersion, Date().addingTimeInterval(self.maxAge) as NSDate)
-        let results = try! self.managedObjectContext.fetch(request)
-        results.forEach(self.managedObjectContext.delete)
-        // TODO: self.managedObjectContext.execute(NSBatchDeleteRequest(fetchRequest: request))
+        let request: NSFetchRequest<NSFetchRequestResult> = NSFetchRequest(entityName: CacheEntry.entityName)
+        request.predicate = NSPredicate(format: "(cache == %@ && cacheVersion != %@) || %@ > date", self.cache, self.cacheVersion, self.clock().addingTimeInterval(-self.maxAge) as NSDate)
+        try! self.managedObjectContext.execute(NSBatchDeleteRequest(fetchRequest: request))
     }
 
 }
@@ -92,7 +91,7 @@ public class MiniCache {
 
     public init() {}
 
-    private let modelDescription = CoreDataModelDescription(
+    private let managedObjectModel = CoreDataModelDescription(
         entities: [
             .entity(
                 name: "CacheEntry",
@@ -106,7 +105,7 @@ public class MiniCache {
                 ]
             ),
         ]
-    )
+    ).makeModel()
 
     private lazy var persistentContainer: NSPersistentContainer = {
         /*
@@ -116,7 +115,7 @@ public class MiniCache {
           error conditions that could cause the creation of the store to fail.
          */
         // TODO: write in cache folder
-        let container = NSPersistentContainer(name: "MiniCache", managedObjectModel: self.modelDescription.makeModel())
+        let container = NSPersistentContainer(name: "MiniCache", managedObjectModel: self.managedObjectModel)
         container.loadPersistentStores(completionHandler: { store, error in
             debugPrint("MiniCache location: \(String(describing: store.url))")
             if let error = error as NSError? {
@@ -143,11 +142,9 @@ public class MiniCache {
     }
 
     public func clear() {
-        let request: NSFetchRequest<CacheEntry> = CacheEntry.fetchRequest()
+        let request: NSFetchRequest<NSFetchRequestResult> = NSFetchRequest(entityName: CacheEntry.entityName)
         let managedObjectContext = self.persistentContainer.viewContext
-        let results = try! managedObjectContext.fetch(request)
-        results.forEach(managedObjectContext.delete)
-        // TODO: self.managedObjectContext.execute(NSBatchDeleteRequest(fetchRequest: request))
+        try! managedObjectContext.execute(NSBatchDeleteRequest(fetchRequest: request))
     }
 
     public static var defaultCacheVersion: String {

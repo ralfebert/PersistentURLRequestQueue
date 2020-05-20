@@ -33,7 +33,7 @@ public extension MiniCacheStorage {
             set: { self[key] = $0 }
         )
     }
-    
+
 }
 
 public extension MiniCache {
