@@ -23,6 +23,7 @@
 import CoreData
 import CoreDataModelDescription
 import Foundation
+import os
 
 public class MiniCacheStorage<Key: Codable, Value: Codable> {
 
@@ -89,6 +90,8 @@ public class MiniCacheStorage<Key: Codable, Value: Codable> {
 
 public class MiniCache {
 
+    public static let log = OSLog(subsystem: "MiniCache", category: "MiniCache")
+
     public init() {}
 
     private let managedObjectModel = CoreDataModelDescription(
@@ -117,7 +120,9 @@ public class MiniCache {
         // TODO: write in cache folder
         let container = NSPersistentContainer(name: "MiniCache", managedObjectModel: self.managedObjectModel)
         container.loadPersistentStores(completionHandler: { store, error in
-            debugPrint("MiniCache location: \(String(describing: store.url))")
+            if let url = store.url {
+                os_log("Cache Location: %s", log: Self.log, type: .debug, String(describing: url))
+            }
             if let error = error as NSError? {
                 // Replace this implementation with code to handle the error appropriately.
                 // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
