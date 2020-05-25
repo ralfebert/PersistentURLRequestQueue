@@ -32,7 +32,6 @@ public enum CacheMaxAge {
 
     var timeInterval: TimeInterval {
         switch self {
-
             case let .hours(hours):
                 return hours * 60 * 60
             case let .days(days):
@@ -122,17 +121,20 @@ public class MiniCacheStorage<Key: Codable, Value: Codable> {
 
 public class MiniCache {
 
-    public static let shared = MiniCache(ownerThread: Thread.main)
+    public static let shared = MiniCache(name: "MiniCache", ownerThread: Thread.main)
 
-    let log = OSLog(subsystem: "MiniCache", category: "MiniCache")
+    let log: OSLog
 
+    let name: String
     private(set) var defaultCacheVersion: String
     private(set) var defaultMaxAge: CacheMaxAge
 
-    public init(defaultCacheVersion: String = MiniCache.appBundleVersion, defaultMaxAge: CacheMaxAge = .days(7), ownerThread: Thread = Thread.current) {
+    public init(name: String, defaultCacheVersion: String = MiniCache.appBundleVersion, defaultMaxAge: CacheMaxAge = .days(7), ownerThread: Thread = Thread.current) {
+        self.name = name
         self.defaultCacheVersion = defaultCacheVersion
         self.defaultMaxAge = defaultMaxAge
         self.ownerThread = ownerThread
+        self.log = OSLog(subsystem: "MiniCache", category: self.name)
         self.checkThread()
     }
 
@@ -161,7 +163,7 @@ public class MiniCache {
           error conditions that could cause the creation of the store to fail.
          */
         // TODO: write in cache folder
-        let container = NSPersistentContainer(name: "MiniCache", managedObjectModel: self.managedObjectModel)
+        let container = NSPersistentContainer(name: self.name, managedObjectModel: self.managedObjectModel)
         container.loadPersistentStores(completionHandler: { store, error in
             if let url = store.url {
                 os_log("Cache Location: %s", log: self.log, type: .debug, String(describing: url))
