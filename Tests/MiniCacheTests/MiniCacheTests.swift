@@ -33,14 +33,14 @@ final class MiniCacheTests: XCTestCase {
     }
 
     func testCacheKeys() {
-        let storage: MiniCacheStorage<String, Int> = self.cache.storage(cacheName: "Counter")
+        let storage: MiniCacheStorage<String, Int> = self.cache.storage(cacheName: "Counter", cacheVersion: .appVersion, maxAge: .days(7))
         XCTAssertNil(storage["c1"])
         storage["c1"] = 1
         storage["c2"] = 2
         XCTAssertEqual(1, storage["c1"])
         XCTAssertEqual(2, storage["c2"])
 
-        let storage2: MiniCacheStorage<String, Int> = self.cache.storage(cacheName: "AnotherCounterCache")
+        let storage2: MiniCacheStorage<String, Int> = self.cache.storage(cacheName: "AnotherCounterCache", cacheVersion: .appVersion, maxAge: .days(7))
         XCTAssertNil(storage2["c1"])
         storage2["c1"] = 3
         XCTAssertEqual(1, storage["c1"])
@@ -49,40 +49,40 @@ final class MiniCacheTests: XCTestCase {
     @available(iOS 13.0, *)
     @available(OSX 10.15, *)
     func testSingleValue() {
-        var counterCachedValue: Binding<Int?> = self.cache.singleValue(cacheName: "Counter")
+        var counterCachedValue: Binding<Int?> = self.cache.singleValue(cacheName: "Counter", cacheVersion: .appVersion, maxAge: .days(7))
         counterCachedValue.wrappedValue = 5
 
         XCTAssertEqual(5, counterCachedValue.wrappedValue)
 
-        counterCachedValue = self.cache.singleValue(cacheName: "Counter")
+        counterCachedValue = self.cache.singleValue(cacheName: "Counter", cacheVersion: .appVersion, maxAge: .days(7))
         XCTAssertEqual(5, counterCachedValue.wrappedValue)
 
-        counterCachedValue = self.cache.singleValue(cacheName: "Counter", cacheVersion: "v2")
+        counterCachedValue = self.cache.singleValue(cacheName: "Counter", cacheVersion: .custom("v2"), maxAge: .days(7))
         XCTAssertNil(counterCachedValue.wrappedValue)
     }
 
     func testExpirationAge() {
-        let storage: MiniCacheStorage<String, Int> = self.cache.storage(cacheName: "Counter", maxAge: .hours(5))
+        let storage: MiniCacheStorage<String, Int> = self.cache.storage(cacheName: "Counter", cacheVersion: .appVersion, maxAge: .hours(5))
         let date = Date()
         cache.clock = { date }
         storage["Counter"] = 1
-        cache.clock = { date.addingTimeInterval(1 * 60 * 60) }
+        self.cache.clock = { date.addingTimeInterval(1 * 60 * 60) }
         XCTAssertEqual(1, storage["Counter"])
-        cache.clock = { date.addingTimeInterval(6 * 60 * 60) }
+        self.cache.clock = { date.addingTimeInterval(6 * 60 * 60) }
         XCTAssertNil(storage["Counter"])
     }
 
     func testExpirationVersion() {
-        var storage: MiniCacheStorage<String, Int> = self.cache.storage(cacheName: "Counter")
+        var storage: MiniCacheStorage<String, Int> = self.cache.storage(cacheName: "Counter", cacheVersion: .appVersion, maxAge: .days(7))
         storage["Counter"] = 1
-        storage = self.cache.storage(cacheName: "Counter", cacheVersion: "v2", maxAge: .hours(5))
+        storage = self.cache.storage(cacheName: "Counter", cacheVersion: .custom("v2"), maxAge: .hours(5))
         XCTAssertNil(storage["Counter"])
         storage["Counter"] = 1
         XCTAssertEqual(1, storage["Counter"])
     }
 
     func testDeleteValue() {
-        let storage: MiniCacheStorage<String, Int> = self.cache.storage(cacheName: "Counter")
+        let storage: MiniCacheStorage<String, Int> = self.cache.storage(cacheName: "Counter", cacheVersion: .appVersion, maxAge: .days(7))
         storage["Counter"] = 1
         XCTAssertEqual(1, storage["Counter"])
         storage["Counter"] = nil

@@ -42,14 +42,33 @@ public enum CacheMaxAge {
     }
 }
 
+public enum CacheVersion {
+    case appVersion
+    case custom(String)
+
+    fileprivate var versionString: String {
+        switch self {
+            case .appVersion:
+                let versions = [
+                    Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+                    Bundle.main.object(forInfoDictionaryKey: kCFBundleVersionKey as String) as? String,
+                ]
+                return versions.compactMap { $0 }.joined(separator: "-")
+
+            case let .custom(value):
+                return value
+        }
+    }
+}
+
 public class MiniCacheStorage<Key: Codable, Value: Codable> {
 
-    let cache : MiniCache
+    let cache: MiniCache
     let cacheName: String
-    let cacheVersion: String
+    let cacheVersion: CacheVersion
     let maxAge: CacheMaxAge
 
-    fileprivate init(cache: MiniCache, cacheName: String, cacheVersion: String, maxAge: CacheMaxAge) {
+    fileprivate init(cache: MiniCache, cacheName: String, cacheVersion: CacheVersion, maxAge: CacheMaxAge) {
         self.cache = cache
         self.cacheName = cacheName
         self.cacheVersion = cacheVersion
@@ -58,35 +77,35 @@ public class MiniCacheStorage<Key: Codable, Value: Codable> {
 
     public subscript(_ key: Key) -> Value? {
         get {
-            cache.checkThread()
+            self.cache.checkThread()
             return self.object(forKey: key)
         }
         set {
-            cache.checkThread()
+            self.cache.checkThread()
             self.setObject(newValue, forKey: key)
         }
     }
 
     private func object(forKey key: Key) -> Value? {
         guard let entry = fetchEntry(forKey: key) else { return nil }
-        return try! cache.jsonDecoder.decode(Value.self, from: entry.value!.data(using: .utf8)!)
+        return try! self.cache.jsonDecoder.decode(Value.self, from: entry.value!.data(using: .utf8)!)
     }
 
     private func setObject(_ value: Value?, forKey key: Key) {
         guard let value = value else {
             if let entry = fetchEntry(forKey: key) {
-                cache.managedObjectContext.delete(entry)
-                try! cache.managedObjectContext.save()
+                self.cache.managedObjectContext.delete(entry)
+                try! self.cache.managedObjectContext.save()
             }
             return
         }
-        let entry = self.fetchEntry(forKey: key) ?? CacheEntry.create(in: cache.managedObjectContext)
+        let entry = self.fetchEntry(forKey: key) ?? CacheEntry.create(in: self.cache.managedObjectContext)
         entry.cache = self.cacheName
-        entry.cacheVersion = self.cacheVersion
+        entry.cacheVersion = self.cacheVersion.versionString
         entry.key = self.encode(key)
         entry.value = self.encode(value)
-        entry.date = cache.clock()
-        try! cache.managedObjectContext.save()
+        entry.date = self.cache.clock()
+        try! self.cache.managedObjectContext.save()
     }
 
     private func fetchEntry(forKey key: Key) -> CacheEntry? {
@@ -94,17 +113,17 @@ public class MiniCacheStorage<Key: Codable, Value: Codable> {
         self.purgeExpiredEntries()
         let fetchRequest: NSFetchRequest<CacheEntry> = CacheEntry.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "cache == %@ && key == %@", self.cacheName, self.encode(key))
-        return try! cache.managedObjectContext.fetch(fetchRequest).first
+        return try! self.cache.managedObjectContext.fetch(fetchRequest).first
     }
 
     private func encode<T: Encodable>(_ value: T) -> String {
-        String(data: try! cache.jsonEncoder.encode(value), encoding: .utf8)!
+        String(data: try! self.cache.jsonEncoder.encode(value), encoding: .utf8)!
     }
 
     private func purgeExpiredEntries() {
         let request: NSFetchRequest<NSFetchRequestResult> = NSFetchRequest(entityName: CacheEntry.entityName)
-        request.predicate = NSPredicate(format: "(cache == %@ && cacheVersion != %@) || %@ > date", self.cacheName, self.cacheVersion, cache.clock().addingTimeInterval(-self.maxAge.timeInterval) as NSDate)
-        try! cache.managedObjectContext.execute(NSBatchDeleteRequest(fetchRequest: request))
+        request.predicate = NSPredicate(format: "(cache == %@ && cacheVersion != %@) || %@ > date", self.cacheName, self.cacheVersion.versionString, self.cache.clock().addingTimeInterval(-self.maxAge.timeInterval) as NSDate)
+        try! self.cache.managedObjectContext.execute(NSBatchDeleteRequest(fetchRequest: request))
     }
 
 }
@@ -114,18 +133,14 @@ public class MiniCache {
     public static var shared = MiniCache(name: "MiniCache", ownerThread: Thread.main)
 
     let name: String
-    let defaultCacheVersion: String
-    let defaultMaxAge: CacheMaxAge
     let jsonEncoder = JSONEncoder()
     let jsonDecoder = JSONDecoder()
     let ownerThread: Thread
     let log: OSLog
     var clock = { Date() }
 
-    public init(name: String, defaultCacheVersion: String = MiniCache.appBundleVersion, defaultMaxAge: CacheMaxAge = .days(7), ownerThread: Thread = Thread.current) {
+    public init(name: String, ownerThread: Thread = Thread.current) {
         self.name = name
-        self.defaultCacheVersion = defaultCacheVersion
-        self.defaultMaxAge = defaultMaxAge
         self.ownerThread = ownerThread
         self.log = OSLog(subsystem: "MiniCache", category: self.name)
         self.checkThread()
@@ -178,14 +193,14 @@ public class MiniCache {
         })
         return container
     }()
-    
-    fileprivate var managedObjectContext : NSManagedObjectContext {
+
+    fileprivate var managedObjectContext: NSManagedObjectContext {
         self.persistentContainer.viewContext
     }
 
-    public func storage<Key: Codable, Value: Codable>(cacheName: String, cacheVersion: String = MiniCache.appBundleVersion, maxAge: CacheMaxAge? = nil) -> MiniCacheStorage<Key, Value> {
+    public func storage<Key: Codable, Value: Codable>(cacheName: String, cacheVersion: CacheVersion, maxAge: CacheMaxAge) -> MiniCacheStorage<Key, Value> {
         self.checkThread()
-        return MiniCacheStorage(cache: self, cacheName: cacheName, cacheVersion: cacheVersion, maxAge: maxAge ?? self.defaultMaxAge)
+        return MiniCacheStorage(cache: self, cacheName: cacheName, cacheVersion: cacheVersion, maxAge: maxAge)
     }
 
     public func clear() {
@@ -197,14 +212,6 @@ public class MiniCache {
 
     fileprivate func checkThread() {
         assert(Thread.current == self.ownerThread, "Illegal thread usage, MiniCache ownerThread=\(self.ownerThread), actual=\(Thread.current)")
-    }
-
-    public static var appBundleVersion: String {
-        let versions = [
-            Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
-            Bundle.main.object(forInfoDictionaryKey: kCFBundleVersionKey as String) as? String,
-        ]
-        return versions.compactMap { $0 }.joined(separator: "-")
     }
 
 }

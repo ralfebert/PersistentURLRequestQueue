@@ -40,8 +40,8 @@ public extension MiniCache {
 
     @available(iOS 13.0, *)
     @available(OSX 10.15, *)
-    func singleValue<Value: Codable>(cacheName: String, cacheVersion: String? = nil, maxAge: CacheMaxAge? = nil) -> Binding<Value?> {
-        self.storage(cacheName: cacheName, cacheVersion: cacheVersion ?? self.defaultCacheVersion, maxAge: maxAge ?? self.defaultMaxAge).binding(forKey: cacheName)
+    func singleValue<Value: Codable>(cacheName: String, cacheVersion: CacheVersion, maxAge: CacheMaxAge) -> Binding<Value?> {
+        self.storage(cacheName: cacheName, cacheVersion: cacheVersion, maxAge: maxAge).binding(forKey: cacheName)
     }
 
 }
