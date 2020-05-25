@@ -1,3 +1,3 @@
 # MiniCache
 
-A description of this package.
+A simple persistent key/value cache based on Codable types.
