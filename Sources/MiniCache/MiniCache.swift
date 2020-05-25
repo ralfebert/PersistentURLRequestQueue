@@ -111,7 +111,7 @@ public class MiniCacheStorage<Key: Codable, Value: Codable> {
 
 public class MiniCache {
 
-    public static let shared = MiniCache(name: "MiniCache", ownerThread: Thread.main)
+    public static var shared = MiniCache(name: "MiniCache", ownerThread: Thread.main)
 
     let name: String
     let defaultCacheVersion: String
