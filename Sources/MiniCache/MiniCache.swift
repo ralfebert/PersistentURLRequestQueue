@@ -116,18 +116,16 @@ public class MiniCache {
     let name: String
     let defaultCacheVersion: String
     let defaultMaxAge: CacheMaxAge
-    let jsonEncoder : JSONEncoder
-    let jsonDecoder : JSONDecoder
+    let jsonEncoder = JSONEncoder()
+    let jsonDecoder = JSONDecoder()
     let ownerThread: Thread
     let log: OSLog
     var clock = { Date() }
 
-    public init(name: String, defaultCacheVersion: String = MiniCache.appBundleVersion, defaultMaxAge: CacheMaxAge = .days(7), jsonEncoder : JSONEncoder = JSONEncoder(), jsonDecoder : JSONDecoder = JSONDecoder(), ownerThread: Thread = Thread.current) {
+    public init(name: String, defaultCacheVersion: String = MiniCache.appBundleVersion, defaultMaxAge: CacheMaxAge = .days(7), ownerThread: Thread = Thread.current) {
         self.name = name
         self.defaultCacheVersion = defaultCacheVersion
         self.defaultMaxAge = defaultMaxAge
-        self.jsonEncoder = jsonEncoder
-        self.jsonDecoder = jsonDecoder
         self.ownerThread = ownerThread
         self.log = OSLog(subsystem: "MiniCache", category: self.name)
         self.checkThread()
