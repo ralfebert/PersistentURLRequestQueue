@@ -236,6 +236,7 @@ public class MiniCache {
         }
     }
 
+    // Default error handling for errors that shouldn't occur normally: crash in DEBUG mode, log error otherwise
     func handleError(_ error: Error) {
         #if DEBUG
         fatalError("MiniCache error: \(error)")
