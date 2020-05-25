@@ -175,7 +175,12 @@ public class MiniCache {
                     .attribute(name: "key", type: .stringAttributeType),
                     .attribute(name: "value", type: .stringAttributeType),
                     .attribute(name: "date", type: .dateAttributeType),
+                ],
+                indexes: [
+                    .index(name: "cache", elements: [.property(name: "cache"), .property(name: "key")]),
+                    .index(name: "cacheKey", elements: [.property(name: "cache"), .property(name: "key")])
                 ]
+                
             ),
         ]
     ).makeModel()
