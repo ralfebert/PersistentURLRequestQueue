@@ -20,22 +20,21 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import CoreData
 import Foundation
 
-@objc(CacheEntry)
-class CacheEntry: NSManagedObject {
+public enum CacheMaxAge {
+    case hours(_ hours: TimeInterval)
+    case days(_ days: TimeInterval)
+    case timeInterval(_ timeInterval: TimeInterval)
 
-    static let entityName = "CacheEntry"
-
-    @nonobjc class func fetchRequest() -> NSFetchRequest<CacheEntry> {
-        NSFetchRequest<CacheEntry>(entityName: Self.entityName)
+    var timeInterval: TimeInterval {
+        switch self {
+            case let .hours(hours):
+                return hours * 60 * 60
+            case let .days(days):
+                return days * 60 * 60 * 24
+            case let .timeInterval(timeInterval):
+                return timeInterval
+        }
     }
-
-    @NSManaged var cache: String
-    @NSManaged var cacheVersion: String
-    @NSManaged var key: String
-    @NSManaged var value: String
-    @NSManaged var date: Date
-
 }
