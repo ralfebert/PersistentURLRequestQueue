@@ -87,43 +87,61 @@ public class MiniCacheStorage<Key: Codable, Value: Codable> {
     }
 
     private func object(forKey key: Key) -> Value? {
-        guard let entry = fetchEntry(forKey: key) else { return nil }
-        return try! self.cache.jsonDecoder.decode(Value.self, from: entry.value!.data(using: .utf8)!)
+        guard let entry = fetchEntry(forKey: key), let data = entry.value.data(using: .utf8) else { return nil }
+        do {
+            return try self.cache.jsonDecoder.decode(Value.self, from: data)
+        } catch {
+            os_log("Error for decoding cache value \"%@\": %@", log: self.cache.log, type: .error, String(describing: key), String(describing: error))
+            return nil
+        }
     }
 
     private func setObject(_ value: Value?, forKey key: Key) {
         guard let value = value else {
             if let entry = fetchEntry(forKey: key) {
                 self.cache.managedObjectContext.delete(entry)
-                try! self.cache.managedObjectContext.save()
+                self.cache.save()
             }
             return
         }
+        guard let encodedKey = cache.withErrorHandling({ try self.encode(key) }) else { return }
+        guard let encodedValue = cache.withErrorHandling({ try self.encode(value) }) else { return }
         let entry = self.fetchEntry(forKey: key) ?? CacheEntry.create(in: self.cache.managedObjectContext)
         entry.cache = self.cacheName
         entry.cacheVersion = self.cacheVersion.versionString
-        entry.key = self.encode(key)
-        entry.value = self.encode(value)
+        entry.key = encodedKey
+        entry.value = encodedValue
         entry.date = self.cache.clock()
-        try! self.cache.managedObjectContext.save()
+        self.cache.save()
     }
 
     private func fetchEntry(forKey key: Key) -> CacheEntry? {
         assert(Thread.isMainThread)
         self.purgeExpiredEntries()
-        let fetchRequest: NSFetchRequest<CacheEntry> = CacheEntry.fetchRequest()
-        fetchRequest.predicate = NSPredicate(format: "cache == %@ && key == %@", self.cacheName, self.encode(key))
-        return try! self.cache.managedObjectContext.fetch(fetchRequest).first
+        return self.cache.withErrorHandling { () -> [CacheEntry] in
+            let fetchRequest: NSFetchRequest<CacheEntry> = CacheEntry.fetchRequest()
+            fetchRequest.predicate = NSPredicate(format: "cache == %@ && key == %@", self.cacheName, try self.encode(key))
+            return try self.cache.managedObjectContext.fetch(fetchRequest)
+        }?.first
     }
 
-    private func encode<T: Encodable>(_ value: T) -> String {
-        String(data: try! self.cache.jsonEncoder.encode(value), encoding: .utf8)!
+    private func encode<T: Encodable>(_ value: T) throws -> String {
+        let data = try self.cache.jsonEncoder.encode(value)
+        if let string = String(data: data, encoding: .utf8) {
+            return string
+        } else {
+            throw StringEncodingError()
+        }
     }
+
+    struct StringEncodingError: Error {}
 
     private func purgeExpiredEntries() {
         let request: NSFetchRequest<NSFetchRequestResult> = NSFetchRequest(entityName: CacheEntry.entityName)
         request.predicate = NSPredicate(format: "(cache == %@ && cacheVersion != %@) || %@ > date", self.cacheName, self.cacheVersion.versionString, self.cache.clock().addingTimeInterval(-self.maxAge.timeInterval) as NSDate)
-        try! self.cache.managedObjectContext.execute(NSBatchDeleteRequest(fetchRequest: request))
+        self.cache.withErrorHandling {
+            _ = try self.cache.managedObjectContext.execute(NSBatchDeleteRequest(fetchRequest: request))
+        }
     }
 
 }
@@ -162,33 +180,29 @@ public class MiniCache {
         ]
     ).makeModel()
 
-    private lazy var persistentContainer: NSPersistentContainer = {
-        /*
-          The persistent container for the application. This implementation
-          creates and returns a container, having loaded the store for the
-          application to it. This property is optional since there are legitimate
-          error conditions that could cause the creation of the store to fail.
-         */
-        // TODO: write in cache folder
-        let container = NSPersistentContainer(name: self.name, managedObjectModel: self.managedObjectModel)
-        container.loadPersistentStores(completionHandler: { store, error in
-            if let url = store.url {
-                os_log("Cache Location: %s", log: self.log, type: .debug, String(describing: url))
-            }
-            if let error = error as NSError? {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
+    static func cacheUrl(name: String) -> URL {
+        let storeDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        return storeDirectory.appendingPathComponent("\(name).sqlite")
+    }
 
-                /*
-                 Typical reasons for an error here include:
-                 * The parent directory does not exist, cannot be created, or disallows writing.
-                 * The persistent store is not accessible, due to permissions or data protection when the device is locked.
-                 * The device is out of space.
-                 * The store could not be migrated to the current model version.
-                 Check the error message to determine what the actual problem was.
-                 */
-                // TODO: handle error and reset database
-                fatalError("Unresolved error \(error), \(error.userInfo)")
+    private lazy var persistentContainer: NSPersistentContainer = {
+        let container = NSPersistentContainer(name: self.name, managedObjectModel: self.managedObjectModel)
+
+        let url = Self.cacheUrl(name: self.name)
+        os_log("Cache Location: %s", log: self.log, type: .debug, String(describing: url))
+
+        let description = NSPersistentStoreDescription(url: url)
+        container.persistentStoreDescriptions = [description]
+
+        container.loadPersistentStores(completionHandler: { _, error in
+            if let error = error {
+                os_log("Recovering from Core Data error by deleting the cache db - Error: %@", log: self.log, type: .error, String(describing: error))
+                try? FileManager.default.removeItem(at: url)
+                container.loadPersistentStores(completionHandler: { _, error in
+                    if let error = error {
+                        self.handleError(error)
+                    }
+                })
             }
         })
         return container
@@ -206,12 +220,43 @@ public class MiniCache {
     public func clear() {
         self.checkThread()
         let request: NSFetchRequest<NSFetchRequestResult> = NSFetchRequest(entityName: CacheEntry.entityName)
-        let managedObjectContext = self.persistentContainer.viewContext
-        try! managedObjectContext.execute(NSBatchDeleteRequest(fetchRequest: request))
+        self.withErrorHandling {
+            _ = try self.managedObjectContext.execute(NSBatchDeleteRequest(fetchRequest: request))
+        }
     }
 
     fileprivate func checkThread() {
-        assert(Thread.current == self.ownerThread, "Illegal thread usage, MiniCache ownerThread=\(self.ownerThread), actual=\(Thread.current)")
+        if Thread.current != self.ownerThread {
+            let msg = "Illegal thread usage, MiniCache ownerThread=\(self.ownerThread), actual=\(Thread.current)"
+            #if DEBUG
+            fatalError(msg)
+            #else
+            os_log("MiniCache threading error: %@", log: self.cache.log, type: .error, msg)
+            #endif
+        }
+    }
+
+    func handleError(_ error: Error) {
+        #if DEBUG
+        fatalError("MiniCache error: \(error)")
+        #else
+        os_log("MiniCache error: %@", log: self.cache.log, type: .error, String(describing: error))
+        #endif
+    }
+
+    func withErrorHandling<T>(_ block: () throws -> T) -> T? {
+        do {
+            return try block()
+        } catch {
+            self.handleError(error)
+            return nil
+        }
+    }
+
+    func save() {
+        self.withErrorHandling {
+            try self.managedObjectContext.save()
+        }
     }
 
 }

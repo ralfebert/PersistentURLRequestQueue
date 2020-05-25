@@ -89,4 +89,32 @@ final class MiniCacheTests: XCTestCase {
         XCTAssertNil(storage["Counter"])
     }
 
+    func testCorruptValue() {
+        let otherCache: MiniCacheStorage<String, String> = self.cache.storage(cacheName: "SomeOtherCache", cacheVersion: .appVersion, maxAge: .days(1))
+        otherCache["Example"] = "foo"
+
+        let stringStorage: MiniCacheStorage<String, String> = self.cache.storage(cacheName: "Example", cacheVersion: .appVersion, maxAge: .days(1))
+        stringStorage["Example"] = "foo"
+        stringStorage["Example2"] = "foo"
+        let intStorage: MiniCacheStorage<String, Int> = self.cache.storage(cacheName: "Example", cacheVersion: .appVersion, maxAge: .days(1))
+        intStorage["Example2"] = 2
+        XCTAssertNil(intStorage["Example"])
+        XCTAssertEqual(intStorage["Example2"], 2)
+
+        XCTAssertEqual(otherCache["Example"], "foo")
+    }
+
+    func testCorruptDbFile() throws {
+        let cacheName = "MiniCache-Corrupt"
+        let url = MiniCache.cacheUrl(name: cacheName)
+
+        try "xyz".write(to: url, atomically: true, encoding: .utf8)
+
+        let cache = MiniCache(name: cacheName)
+        let stringStorage: MiniCacheStorage<String, String> = cache.storage(cacheName: "Example", cacheVersion: .appVersion, maxAge: .days(1))
+        XCTAssertNil(stringStorage["foo"])
+        stringStorage["foo"] = "bar"
+        XCTAssertEqual(stringStorage["foo"], "bar")
+    }
+
 }

@@ -36,10 +36,10 @@ public class CacheEntry: NSManagedObject {
         NSFetchRequest<CacheEntry>(entityName: Self.entityName)
     }
 
-    @NSManaged public var cache: String?
-    @NSManaged public var cacheVersion: String?
-    @NSManaged public var key: String?
-    @NSManaged public var value: String?
-    @NSManaged public var date: Date?
+    @NSManaged public var cache: String
+    @NSManaged public var cacheVersion: String
+    @NSManaged public var key: String
+    @NSManaged public var value: String
+    @NSManaged public var date: Date
 
 }
