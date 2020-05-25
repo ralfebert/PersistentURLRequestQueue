@@ -25,18 +25,36 @@ import CoreDataModelDescription
 import Foundation
 import os
 
+public enum CacheMaxAge {
+    case hours(_ hours: TimeInterval)
+    case days(_ days: TimeInterval)
+    case timeInterval(_ timeInterval: TimeInterval)
+
+    var timeInterval: TimeInterval {
+        switch self {
+
+            case let .hours(hours):
+                return hours * 60 * 60
+            case let .days(days):
+                return days * 60 * 60 * 24
+            case let .timeInterval(timeInterval):
+                return timeInterval
+        }
+    }
+}
+
 public class MiniCacheStorage<Key: Codable, Value: Codable> {
 
     let cache: String
     let cacheVersion: String
-    let maxAge: TimeInterval
+    let maxAge: CacheMaxAge
     let managedObjectContext: NSManagedObjectContext
     let jsonEncoder = JSONEncoder()
     let jsonDecoder = JSONDecoder()
-    let ownerThread : Thread
+    let ownerThread: Thread
     var clock = { Date() }
 
-    fileprivate init(cache: String, cacheVersion: String, maxAge: TimeInterval, managedObjectContext: NSManagedObjectContext, ownerThread : Thread) {
+    fileprivate init(cache: String, cacheVersion: String, maxAge: CacheMaxAge, managedObjectContext: NSManagedObjectContext, ownerThread: Thread) {
         self.cache = cache
         self.cacheVersion = cacheVersion
         self.maxAge = maxAge
@@ -44,14 +62,14 @@ public class MiniCacheStorage<Key: Codable, Value: Codable> {
         self.ownerThread = ownerThread
         self.checkThread()
     }
-    
+
     public subscript(_ key: Key) -> Value? {
         get {
-            checkThread()
+            self.checkThread()
             return self.object(forKey: key)
         }
         set {
-            checkThread()
+            self.checkThread()
             self.setObject(newValue, forKey: key)
         }
     }
@@ -92,25 +110,33 @@ public class MiniCacheStorage<Key: Codable, Value: Codable> {
 
     private func purgeExpiredEntries() {
         let request: NSFetchRequest<NSFetchRequestResult> = NSFetchRequest(entityName: CacheEntry.entityName)
-        request.predicate = NSPredicate(format: "(cache == %@ && cacheVersion != %@) || %@ > date", self.cache, self.cacheVersion, self.clock().addingTimeInterval(-self.maxAge) as NSDate)
+        request.predicate = NSPredicate(format: "(cache == %@ && cacheVersion != %@) || %@ > date", self.cache, self.cacheVersion, self.clock().addingTimeInterval(-self.maxAge.timeInterval) as NSDate)
         try! self.managedObjectContext.execute(NSBatchDeleteRequest(fetchRequest: request))
     }
 
     private func checkThread() {
-        assert(Thread.current == ownerThread)
+        assert(Thread.current == self.ownerThread, "Illegal thread usage, MiniCache ownerThread=\(self.ownerThread), actual=\(Thread.current)")
     }
 
 }
 
 public class MiniCache {
 
-    public static let log = OSLog(subsystem: "MiniCache", category: "MiniCache")
+    public static let shared = MiniCache(ownerThread: Thread.main)
 
-    public init() {
-        self.ownerThread = Thread.current
+    let log = OSLog(subsystem: "MiniCache", category: "MiniCache")
+
+    private(set) var defaultCacheVersion: String
+    private(set) var defaultMaxAge: CacheMaxAge
+
+    public init(defaultCacheVersion: String = MiniCache.appBundleVersion, defaultMaxAge: CacheMaxAge = .days(7), ownerThread: Thread = Thread.current) {
+        self.defaultCacheVersion = defaultCacheVersion
+        self.defaultMaxAge = defaultMaxAge
+        self.ownerThread = ownerThread
+        self.checkThread()
     }
 
-    private let ownerThread : Thread
+    private let ownerThread: Thread
     private let managedObjectModel = CoreDataModelDescription(
         entities: [
             .entity(
@@ -138,7 +164,7 @@ public class MiniCache {
         let container = NSPersistentContainer(name: "MiniCache", managedObjectModel: self.managedObjectModel)
         container.loadPersistentStores(completionHandler: { store, error in
             if let url = store.url {
-                os_log("Cache Location: %s", log: Self.log, type: .debug, String(describing: url))
+                os_log("Cache Location: %s", log: self.log, type: .debug, String(describing: url))
             }
             if let error = error as NSError? {
                 // Replace this implementation with code to handle the error appropriately.
@@ -159,9 +185,9 @@ public class MiniCache {
         return container
     }()
 
-    public func storage<Key: Codable, Value: Codable>(cache: String, cacheVersion: String = MiniCache.defaultCacheVersion, maxAge: TimeInterval = MiniCache.defaultMaxAge) -> MiniCacheStorage<Key, Value> {
+    public func storage<Key: Codable, Value: Codable>(cacheName: String, cacheVersion: String = MiniCache.appBundleVersion, maxAge: CacheMaxAge? = nil) -> MiniCacheStorage<Key, Value> {
         self.checkThread()
-        return MiniCacheStorage(cache: cache, cacheVersion: cacheVersion, maxAge: maxAge, managedObjectContext: self.persistentContainer.viewContext, ownerThread: self.ownerThread)
+        return MiniCacheStorage(cache: cacheName, cacheVersion: cacheVersion, maxAge: maxAge ?? self.defaultMaxAge, managedObjectContext: self.persistentContainer.viewContext, ownerThread: self.ownerThread)
     }
 
     public func clear() {
@@ -172,19 +198,15 @@ public class MiniCache {
     }
 
     private func checkThread() {
-        assert(Thread.current == ownerThread)
+        assert(Thread.current == self.ownerThread, "Illegal thread usage, MiniCache ownerThread=\(self.ownerThread), actual=\(Thread.current)")
     }
 
-    public static var defaultCacheVersion: String {
+    public static var appBundleVersion: String {
         let versions = [
             Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
             Bundle.main.object(forInfoDictionaryKey: kCFBundleVersionKey as String) as? String,
         ]
         return versions.compactMap { $0 }.joined(separator: "-")
-    }
-
-    public static var defaultMaxAge: TimeInterval {
-        timeInterval(days: 7)
     }
 
 }
