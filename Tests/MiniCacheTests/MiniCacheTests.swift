@@ -64,11 +64,11 @@ final class MiniCacheTests: XCTestCase {
     func testExpirationAge() {
         let storage: MiniCacheStorage<String, Int> = self.cache.storage(cacheName: "Counter", maxAge: .hours(5))
         let date = Date()
-        storage.clock = { date }
+        cache.clock = { date }
         storage["Counter"] = 1
-        storage.clock = { date.addingTimeInterval(1 * 60 * 60) }
+        cache.clock = { date.addingTimeInterval(1 * 60 * 60) }
         XCTAssertEqual(1, storage["Counter"])
-        storage.clock = { date.addingTimeInterval(6 * 60 * 60) }
+        cache.clock = { date.addingTimeInterval(6 * 60 * 60) }
         XCTAssertNil(storage["Counter"])
     }
 
