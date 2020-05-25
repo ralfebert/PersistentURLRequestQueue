@@ -33,26 +33,35 @@ public class MiniCacheStorage<Key: Codable, Value: Codable> {
     let managedObjectContext: NSManagedObjectContext
     let jsonEncoder = JSONEncoder()
     let jsonDecoder = JSONDecoder()
+    let ownerThread : Thread
     var clock = { Date() }
 
-    fileprivate init(cache: String, cacheVersion: String, maxAge: TimeInterval, managedObjectContext: NSManagedObjectContext) {
+    fileprivate init(cache: String, cacheVersion: String, maxAge: TimeInterval, managedObjectContext: NSManagedObjectContext, ownerThread : Thread) {
         self.cache = cache
         self.cacheVersion = cacheVersion
         self.maxAge = maxAge
         self.managedObjectContext = managedObjectContext
+        self.ownerThread = ownerThread
+        self.checkThread()
     }
-
+    
     public subscript(_ key: Key) -> Value? {
         get {
-            guard let entry = fetchEntry(forKey: key) else { return nil }
-            return try! self.jsonDecoder.decode(Value.self, from: entry.value!.data(using: .utf8)!)
+            checkThread()
+            return self.object(forKey: key)
         }
         set {
-            self.setObject(newValue, forKey: key, validUntil: self.clock().addingTimeInterval(self.maxAge))
+            checkThread()
+            self.setObject(newValue, forKey: key)
         }
     }
 
-    private func setObject(_ value: Value?, forKey key: Key, validUntil: Date) {
+    private func object(forKey key: Key) -> Value? {
+        guard let entry = fetchEntry(forKey: key) else { return nil }
+        return try! self.jsonDecoder.decode(Value.self, from: entry.value!.data(using: .utf8)!)
+    }
+
+    private func setObject(_ value: Value?, forKey key: Key) {
         guard let value = value else {
             if let entry = fetchEntry(forKey: key) {
                 self.managedObjectContext.delete(entry)
@@ -70,6 +79,7 @@ public class MiniCacheStorage<Key: Codable, Value: Codable> {
     }
 
     private func fetchEntry(forKey key: Key) -> CacheEntry? {
+        assert(Thread.isMainThread)
         self.purgeExpiredEntries()
         let fetchRequest: NSFetchRequest<CacheEntry> = CacheEntry.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "cache == %@ && key == %@", self.cache, self.encode(key))
@@ -86,14 +96,21 @@ public class MiniCacheStorage<Key: Codable, Value: Codable> {
         try! self.managedObjectContext.execute(NSBatchDeleteRequest(fetchRequest: request))
     }
 
+    private func checkThread() {
+        assert(Thread.current == ownerThread)
+    }
+
 }
 
 public class MiniCache {
 
     public static let log = OSLog(subsystem: "MiniCache", category: "MiniCache")
 
-    public init() {}
+    public init() {
+        self.ownerThread = Thread.current
+    }
 
+    private let ownerThread : Thread
     private let managedObjectModel = CoreDataModelDescription(
         entities: [
             .entity(
@@ -143,13 +160,19 @@ public class MiniCache {
     }()
 
     public func storage<Key: Codable, Value: Codable>(cache: String, cacheVersion: String = MiniCache.defaultCacheVersion, maxAge: TimeInterval = MiniCache.defaultMaxAge) -> MiniCacheStorage<Key, Value> {
-        MiniCacheStorage(cache: cache, cacheVersion: cacheVersion, maxAge: maxAge, managedObjectContext: self.persistentContainer.viewContext)
+        self.checkThread()
+        return MiniCacheStorage(cache: cache, cacheVersion: cacheVersion, maxAge: maxAge, managedObjectContext: self.persistentContainer.viewContext, ownerThread: self.ownerThread)
     }
 
     public func clear() {
+        self.checkThread()
         let request: NSFetchRequest<NSFetchRequestResult> = NSFetchRequest(entityName: CacheEntry.entityName)
         let managedObjectContext = self.persistentContainer.viewContext
         try! managedObjectContext.execute(NSBatchDeleteRequest(fetchRequest: request))
+    }
+
+    private func checkThread() {
+        assert(Thread.current == ownerThread)
     }
 
     public static var defaultCacheVersion: String {
