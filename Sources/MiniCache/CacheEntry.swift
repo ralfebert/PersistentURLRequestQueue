@@ -28,6 +28,10 @@ class CacheEntry: NSManagedObject {
 
     static let entityName = "CacheEntry"
 
+    static func create(context: NSManagedObjectContext) -> CacheEntry {
+        NSEntityDescription.insertNewObject(forEntityName: Self.entityName, into: context) as! CacheEntry
+    }
+
     @nonobjc class func fetchRequest() -> NSFetchRequest<CacheEntry> {
         NSFetchRequest<CacheEntry>(entityName: Self.entityName)
     }

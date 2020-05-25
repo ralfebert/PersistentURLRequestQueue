@@ -33,17 +33,32 @@ final class MiniCacheTests: XCTestCase {
     }
 
     func testCacheKeys() {
-        let storage: MiniCache<String, Int> = self.cacheManager.cache(cacheName: "Counter", cacheVersion: .appVersion, maxAge: .days(7))
-        XCTAssertNil(storage["c1"])
-        storage["c1"] = 1
-        storage["c2"] = 2
-        XCTAssertEqual(1, storage["c1"])
-        XCTAssertEqual(2, storage["c2"])
+        let cache: MiniCache<String, Int> = self.cacheManager.cache(cacheName: "Counter", cacheVersion: .appVersion, maxAge: .days(7))
+        XCTAssertNil(cache["c1"])
+        cache["c1"] = 1
+        cache["c2"] = 2
+        XCTAssertEqual(1, cache["c1"])
+        XCTAssertEqual(2, cache["c2"])
 
         let storage2: MiniCache<String, Int> = self.cacheManager.cache(cacheName: "AnotherCounterCache", cacheVersion: .appVersion, maxAge: .days(7))
         XCTAssertNil(storage2["c1"])
         storage2["c1"] = 3
-        XCTAssertEqual(1, storage["c1"])
+        XCTAssertEqual(1, cache["c1"])
+    }
+
+    struct ExampleKey: Codable {
+        var xid: Int
+        var name: String
+    }
+
+    func testCacheKeysEncoded() throws {
+        let cache: MiniCache<ExampleKey, String> = self.cacheManager.cache(cacheName: "Counter", cacheVersion: .appVersion, maxAge: .days(7))
+
+        cache[ExampleKey(xid: 1, name: "Alice")] = "alice-value"
+        cache[ExampleKey(xid: 2, name: "Bob")] = "bob-value"
+        XCTAssertEqual("alice-value", cache[ExampleKey(xid: 1, name: "Alice")])
+        XCTAssertEqual("bob-value", cache[ExampleKey(xid: 2, name: "Bob")])
+        XCTAssertEqual(try cache.encode(ExampleKey(xid: 1, name: "Alice")), "{\"name\":\"Alice\",\"xid\":1}")
     }
 
     @available(iOS 13.0, *)

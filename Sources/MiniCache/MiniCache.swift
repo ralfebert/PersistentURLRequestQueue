@@ -70,7 +70,7 @@ public class MiniCache<Key: Codable, Value: Codable> {
         }
         guard let encodedKey = cacheManager.withErrorHandling({ try self.encode(key) }) else { return }
         guard let encodedValue = cacheManager.withErrorHandling({ try self.encode(value) }) else { return }
-        let entry = self.fetchEntry(forKey: key) ?? CacheEntry(context: self.cacheManager.managedObjectContext)
+        let entry = self.fetchEntry(forKey: key) ?? CacheEntry.create(context: self.cacheManager.managedObjectContext)
         entry.cache = self.cacheName
         entry.cacheVersion = self.cacheVersion.versionString
         entry.key = encodedKey
@@ -88,7 +88,7 @@ public class MiniCache<Key: Codable, Value: Codable> {
         }?.first
     }
 
-    private func encode<T: Encodable>(_ value: T) throws -> String {
+    func encode<T: Encodable>(_ value: T) throws -> String {
         let data = try self.cacheManager.jsonEncoder.encode(value)
         if let string = String(data: data, encoding: .utf8) {
             return string
@@ -112,7 +112,12 @@ public class MiniCache<Key: Codable, Value: Codable> {
 public class MiniCacheManager {
 
     let name: String
-    let jsonEncoder = JSONEncoder()
+    let jsonEncoder = { () -> JSONEncoder in
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        return encoder
+    }()
+
     let jsonDecoder = JSONDecoder()
     let ownerThread: Thread
     let log: OSLog
