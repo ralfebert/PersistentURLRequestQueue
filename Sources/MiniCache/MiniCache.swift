@@ -148,8 +148,6 @@ public class MiniCacheStorage<Key: Codable, Value: Codable> {
 
 public class MiniCache {
 
-    public static var shared = MiniCache(name: "MiniCache", ownerThread: Thread.main)
-
     let name: String
     let jsonEncoder = JSONEncoder()
     let jsonDecoder = JSONDecoder()
@@ -178,9 +176,9 @@ public class MiniCache {
                 ],
                 indexes: [
                     .index(name: "cache", elements: [.property(name: "cache"), .property(name: "key")]),
-                    .index(name: "cacheKey", elements: [.property(name: "cache"), .property(name: "key")])
+                    .index(name: "cacheKey", elements: [.property(name: "cache"), .property(name: "key")]),
                 ]
-                
+
             ),
         ]
     ).makeModel()

@@ -30,7 +30,7 @@ public struct CacheValue<Value: Codable> {
 
     private let binding: Binding<Value?>
 
-    public init(cache: MiniCache = MiniCache.shared, key: String, cacheVersion: CacheVersion, maxAge: CacheMaxAge) {
+    public init(cache: MiniCache, key: String, cacheVersion: CacheVersion, maxAge: CacheMaxAge) {
         self.binding = cache.singleValue(cacheName: key, cacheVersion: cacheVersion, maxAge: maxAge)
     }
 

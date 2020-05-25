@@ -26,7 +26,7 @@ import XCTest
 
 final class MiniCacheTests: XCTestCase {
 
-    let cache = MiniCache.shared
+    let cache = MiniCache(name: "MiniCache")
 
     override func setUp() {
         self.cache.clear()
