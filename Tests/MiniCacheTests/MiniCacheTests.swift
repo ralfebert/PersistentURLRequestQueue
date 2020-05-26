@@ -61,21 +61,6 @@ final class MiniCacheTests: XCTestCase {
         XCTAssertEqual(try cache.encode(ExampleKey(xid: 1, name: "Alice")), "{\"name\":\"Alice\",\"xid\":1}")
     }
 
-    @available(iOS 13.0, *)
-    @available(OSX 10.15, *)
-    func testSingleValue() {
-        var counterCachedValue: Binding<Int?> = self.cacheManager.singleValue(cacheName: "Counter", cacheVersion: .appVersion, maxAge: .days(7))
-        counterCachedValue.wrappedValue = 5
-
-        XCTAssertEqual(5, counterCachedValue.wrappedValue)
-
-        counterCachedValue = self.cacheManager.singleValue(cacheName: "Counter", cacheVersion: .appVersion, maxAge: .days(7))
-        XCTAssertEqual(5, counterCachedValue.wrappedValue)
-
-        counterCachedValue = self.cacheManager.singleValue(cacheName: "Counter", cacheVersion: .custom("v2"), maxAge: .days(7))
-        XCTAssertNil(counterCachedValue.wrappedValue)
-    }
-
     func testExpirationAge() {
         let storage: MiniCache<String, Int> = self.cacheManager.cache(cacheName: "Counter", cacheVersion: .appVersion, maxAge: .hours(5))
         let date = Date()
