@@ -38,5 +38,6 @@ class QueueEntry: NSManagedObject {
 
     @NSManaged var request: String
     @NSManaged var date: Date
+    @NSManaged var pausedUntil: Date?
 
 }

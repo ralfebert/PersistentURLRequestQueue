@@ -20,18 +20,21 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import Combine
 import CoreData
 import CoreDataModelDescription
 import Endpoint
 import Foundation
 import os.log
+import Reachability
 
-public class PersistentQueue {
+public class PersistentURLRequestQueue {
 
     let name: String
     let urlSession: URLSession
     let queue: OperationQueue = {
         let queue = OperationQueue()
+        queue.qualityOfService = .userInitiated
         queue.maxConcurrentOperationCount = 1
         queue.name = "PersistentQueue"
         return queue
@@ -39,11 +42,48 @@ public class PersistentQueue {
 
     let log: OSLog
     var clock = { Date() }
+    var subscriptions = Set<AnyCancellable>()
+    var retryTimeInterval: TimeInterval
+    var scheduleTimers: Bool = true
+    private var persistentContainer: NSPersistentContainer
 
-    public init(name: String, urlSession: URLSession = .shared) {
+    public init(name: String, urlSession: URLSession = .shared, retryTimeInterval: TimeInterval = 30, connectionStatus: AnyPublisher<Reachability.Connection, Never>) {
         self.name = name
         self.log = OSLog(subsystem: "PersistentQueue", category: name)
+        self.retryTimeInterval = retryTimeInterval
         self.urlSession = urlSession
+
+        let container = NSPersistentContainer(name: self.name, managedObjectModel: self.managedObjectModel)
+
+        let url = Self.storageUrl(name: self.name)
+        os_log("PersistentStore Location: %s", log: self.log, type: .debug, String(describing: url))
+
+        let description = NSPersistentStoreDescription(url: url)
+        container.persistentStoreDescriptions = [description]
+        self.persistentContainer = container
+
+        container.loadPersistentStores(completionHandler: { _, error in
+
+            connectionStatus
+                .sink { connection in
+                    switch connection {
+                        case .none, .unavailable:
+                            break
+                        case .wifi, .cellular:
+                            os_log("%s became available: Scheduling queue run", log: self.log, type: .info, String(describing: connection))
+                            self.clearPauseDates()
+                            self.startProcessing()
+                    }
+                }
+                .store(in: &self.subscriptions)
+
+            if let error = error {
+                os_log("Error with PeristentQueue storage: %@", log: self.log, type: .error, String(describing: error))
+                fatalError(String(describing: error))
+
+            }
+        })
+
     }
 
     private let managedObjectModel = CoreDataModelDescription(
@@ -54,6 +94,7 @@ public class PersistentQueue {
                 attributes: [
                     .attribute(name: "request", type: .stringAttributeType),
                     .attribute(name: "date", type: .dateAttributeType),
+                    .attribute(name: "pausedUntil", type: .dateAttributeType, isOptional: true),
                 ]
             ),
         ]
@@ -63,24 +104,6 @@ public class PersistentQueue {
         let storeDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
         return storeDirectory.appendingPathComponent("\(name).sqlite")
     }
-
-    private lazy var persistentContainer: NSPersistentContainer = {
-        let container = NSPersistentContainer(name: self.name, managedObjectModel: self.managedObjectModel)
-
-        let url = Self.storageUrl(name: self.name)
-        os_log("PersistentStore Location: %s", log: self.log, type: .debug, String(describing: url))
-
-        let description = NSPersistentStoreDescription(url: url)
-        container.persistentStoreDescriptions = [description]
-
-        container.loadPersistentStores(completionHandler: { _, error in
-            if let error = error {
-                os_log("Error with PeristentQueue storage: %@", log: self.log, type: .error, String(describing: error))
-                fatalError(String(describing: error))
-            }
-        })
-        return container
-    }()
 
     private var managedObjectContext: NSManagedObjectContext {
         self.persistentContainer.viewContext
@@ -125,14 +148,41 @@ public class PersistentQueue {
     var processing = false
 
     func removeAll() throws {
+        try self.entries().forEach(self.managedObjectContext.delete)
+    }
+
+    func updatePausedEntries() {
+        withErrorHandling {
         let fetchRequest: NSFetchRequest<QueueEntry> = QueueEntry.fetchRequest()
-        let items = try self.managedObjectContext.fetch(fetchRequest)
-        items.forEach(self.managedObjectContext.delete)
+        fetchRequest.predicate = NSPredicate(format: "%@ > pausedUntil", self.clock() as NSDate)
+        let entries = try self.managedObjectContext.fetch(fetchRequest)
+        for entry in entries {
+            entry.pausedUntil = nil
+        }
+        self.save()
+        }
+    }
+
+    func clearPauseDates() {
+        withErrorHandling {
+        let fetchRequest: NSFetchRequest<QueueEntry> = QueueEntry.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "%@ != nil")
+        let entries = try self.managedObjectContext.fetch(fetchRequest)
+        for entry in entries {
+            entry.pausedUntil = nil
+        }
+        self.save()
+        }
     }
 
     func entries() throws -> [QueueEntry] {
         let fetchRequest: NSFetchRequest<QueueEntry> = QueueEntry.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "pausedUntil == nil")
         return try self.managedObjectContext.fetch(fetchRequest)
+    }
+
+    func requestCount() throws -> Int {
+        try self.entries().count
     }
 
     public func startProcessing() {
@@ -142,6 +192,8 @@ public class PersistentQueue {
                 return
             }
             self.withErrorHandling {
+                try self.updatePausedEntries()
+
                 let items = try self.entries()
                 os_log("processQueueItems: %i items to process", log: self.log, type: .info, items.count)
 
@@ -149,22 +201,35 @@ public class PersistentQueue {
                     let request = try self.decode(item.request)
                     os_log("Processing %s", log: self.log, type: .info, self.infoString(request: request))
 
-                    let endpoint = Endpoint(request: request, urlSession: self.urlSession, validate: EndpointExpectation.ignoreResponse)
+                    let endpoint = Endpoint(request: request, urlSession: self.urlSession)
                     self.processing = true
                     endpoint.load { result in
                         os_log("Processed %s: %s", log: self.log, type: .info, self.infoString(request: request), String(describing: result))
                         self.queue.addOperation {
-                            self.processing = false
                             // TODO: Definition Fehlerbehandlung wenn success == false
                             // Wenn Fehler wegen offline: Queue nochmal abarbeiten wenn Netzverfügbarkeit wieder da (Reachability)
                             // Anderer Fehler: Alle 10s nochmal versuchen
-                            self.managedObjectContext.delete(item)
+                            switch result {
+                                case .success():
+                                    self.managedObjectContext.delete(item)
+                                case let .failure(error):
+                                    item.pausedUntil = self.clock().addingTimeInterval(self.retryTimeInterval)
+                                    self.scheduleTimer()
+                            }
                             self.save()
+                            self.processing = false
                             self.startProcessing()
                         }
                     }
                 }
             }
+        }
+    }
+
+    func scheduleTimer() {
+        guard self.scheduleTimers else { return }
+        Timer.scheduledTimer(withTimeInterval: self.retryTimeInterval + 1, repeats: false) { _ in
+            self.startProcessing()
         }
     }
 

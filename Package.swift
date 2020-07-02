@@ -4,27 +4,28 @@
 import PackageDescription
 
 let package = Package(
-    name: "PersistentQueue",
-    platforms: [.iOS(.v11), .macOS(.v10_13)],
+    name: "PersistentURLRequestQueue",
+    platforms: [.iOS(.v13), .macOS(.v10_15)],
     products: [
         // Products define the executables and libraries produced by a package, and make them visible to other packages.
         .library(
-            name: "PersistentQueue",
-            targets: ["PersistentQueue"]),
+            name: "PersistentURLRequestQueue",
+            targets: ["PersistentURLRequestQueue"]),
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
         .package(name: "CoreDataModelDescription", url: "https://github.com/dmytro-anokhin/core-data-model-description.git", from: "0.0.1"),
-        .package(name: "Endpoint", url: "https://github.com/ralfebert/Endpoint.git", from: "0.1.0")
+        .package(name: "Endpoint", url: "https://github.com/ralfebert/Endpoint.git", from: "0.1.0"),
+        .package(name: "Reachability", url: "https://github.com/ashleymills/Reachability.swift.git", .branch("master"))
     ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
         // Targets can depend on other targets in this package, and on products in packages which this package depends on.
         .target(
-            name: "PersistentQueue",
-            dependencies: ["CoreDataModelDescription", "Endpoint"]),
+            name: "PersistentURLRequestQueue",
+            dependencies: ["CoreDataModelDescription", "Endpoint", "Reachability"]),
         .testTarget(
-            name: "PersistentQueueTests",
-            dependencies: ["PersistentQueue"]),
+            name: "PersistentURLRequestQueueTests",
+            dependencies: ["PersistentURLRequestQueue"]),
     ]
 )
