@@ -123,6 +123,7 @@ final class PersistentURLRequestQueueTests: XCTestCase {
         workADone = self.stubURL(url: url, result: "A")
 
         wait(for: [workADone], timeout: 1)
+        try self.expectAllTasksDone()
     }
 
     func expectAllTasksDone() throws {

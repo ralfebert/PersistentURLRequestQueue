@@ -152,26 +152,26 @@ public class PersistentURLRequestQueue {
     }
 
     func updatePausedEntries() {
-        withErrorHandling {
-        let fetchRequest: NSFetchRequest<QueueEntry> = QueueEntry.fetchRequest()
-        fetchRequest.predicate = NSPredicate(format: "%@ > pausedUntil", self.clock() as NSDate)
-        let entries = try self.managedObjectContext.fetch(fetchRequest)
-        for entry in entries {
-            entry.pausedUntil = nil
-        }
-        self.save()
+        self.withErrorHandling {
+            let fetchRequest: NSFetchRequest<QueueEntry> = QueueEntry.fetchRequest()
+            fetchRequest.predicate = NSPredicate(format: "%@ > pausedUntil", self.clock() as NSDate)
+            let entries = try self.managedObjectContext.fetch(fetchRequest)
+            for entry in entries {
+                entry.pausedUntil = nil
+            }
+            self.save()
         }
     }
 
     func clearPauseDates() {
-        withErrorHandling {
-        let fetchRequest: NSFetchRequest<QueueEntry> = QueueEntry.fetchRequest()
-        fetchRequest.predicate = NSPredicate(format: "%@ != nil")
-        let entries = try self.managedObjectContext.fetch(fetchRequest)
-        for entry in entries {
-            entry.pausedUntil = nil
-        }
-        self.save()
+        self.withErrorHandling {
+            let fetchRequest: NSFetchRequest<QueueEntry> = QueueEntry.fetchRequest()
+            fetchRequest.predicate = NSPredicate(format: "%@ != nil")
+            let entries = try self.managedObjectContext.fetch(fetchRequest)
+            for entry in entries {
+                entry.pausedUntil = nil
+            }
+            self.save()
         }
     }
 
@@ -206,13 +206,10 @@ public class PersistentURLRequestQueue {
                     endpoint.load { result in
                         os_log("Processed %s: %s", log: self.log, type: .info, self.infoString(request: request), String(describing: result))
                         self.queue.addOperation {
-                            // TODO: Definition Fehlerbehandlung wenn success == false
-                            // Wenn Fehler wegen offline: Queue nochmal abarbeiten wenn Netzverfügbarkeit wieder da (Reachability)
-                            // Anderer Fehler: Alle 10s nochmal versuchen
                             switch result {
                                 case .success():
                                     self.managedObjectContext.delete(item)
-                                case let .failure(error):
+                                case .failure:
                                     item.pausedUntil = self.clock().addingTimeInterval(self.retryTimeInterval)
                                     self.scheduleTimer()
                             }
