@@ -16,7 +16,7 @@ let package = Package(
         // Dependencies declare other packages that this package depends on.
         .package(name: "CoreDataModelDescription", url: "https://github.com/dmytro-anokhin/core-data-model-description.git", from: "0.0.1"),
         .package(name: "Endpoint", url: "https://github.com/ralfebert/Endpoint.git", from: "0.1.0"),
-        .package(name: "Reachability", url: "https://github.com/ashleymills/Reachability.swift.git", .branch("master"))
+        .package(name: "Reachability", url: "https://github.com/ashleymills/Reachability.swift.git", from: "5.0.0")
     ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.

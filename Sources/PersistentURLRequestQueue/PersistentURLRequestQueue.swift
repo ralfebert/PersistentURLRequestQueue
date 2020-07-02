@@ -192,7 +192,7 @@ public class PersistentURLRequestQueue {
                 return
             }
             self.withErrorHandling {
-                try self.updatePausedEntries()
+                self.updatePausedEntries()
 
                 let items = try self.entries()
                 os_log("processQueueItems: %i items to process", log: self.log, type: .info, items.count)
