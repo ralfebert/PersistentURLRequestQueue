@@ -20,26 +20,41 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import CoreData
 import Foundation
 
-@objc(CacheEntry)
-class CacheEntry: NSManagedObject {
+struct StubbedResponse {
+    let response: HTTPURLResponse
+    let data: Data
+}
 
-    static let entityName = "CacheEntry"
+typealias RequestHandler = (_ request: URLRequest) -> StubbedResponse
 
-    static func create(context: NSManagedObjectContext) -> CacheEntry {
-        NSEntityDescription.insertNewObject(forEntityName: Self.entityName, into: context) as! CacheEntry
+class TinyHTTPStubURLProtocol: URLProtocol {
+    static var urls = [URL: RequestHandler]()
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        guard let url = request.url else { return false }
+        return self.urls.keys.contains(url)
     }
 
-    @nonobjc class func fetchRequest() -> NSFetchRequest<CacheEntry> {
-        NSFetchRequest<CacheEntry>(entityName: Self.entityName)
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
     }
 
-    @NSManaged var cache: String
-    @NSManaged var cacheVersion: String
-    @NSManaged var key: String
-    @NSManaged var value: String
-    @NSManaged var date: Date
+    override class func requestIsCacheEquivalent(_: URLRequest, to _: URLRequest) -> Bool {
+        false
+    }
 
+    override func startLoading() {
+        guard let client = client, let url = request.url, let handler = TinyHTTPStubURLProtocol.urls[url] else {
+            fatalError()
+        }
+
+        let response = handler(request)
+        client.urlProtocol(self, didReceive: response.response, cacheStoragePolicy: .notAllowed)
+        client.urlProtocol(self, didLoad: response.data)
+        client.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }

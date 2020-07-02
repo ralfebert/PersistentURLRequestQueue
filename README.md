@@ -1,6 +1,6 @@
-# MiniCache
+# PersistentQueue
 
-A persistent key/value cache for Codable values.
+A persistent queue with Codable values.
 
 ## Creating a cache manager
 

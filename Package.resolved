@@ -9,6 +9,33 @@
           "revision": "9669c28cf58deb4a8d0454abd656ac7557f98ab6",
           "version": "0.0.9"
         }
+      },
+      {
+        "package": "Endpoint",
+        "repositoryURL": "https://github.com/ralfebert/Endpoint.git",
+        "state": {
+          "branch": null,
+          "revision": "7a85200701c821be97dad0a2bfaae6838ab26651",
+          "version": "0.1.2"
+        }
+      },
+      {
+        "package": "HttpEnums",
+        "repositoryURL": "https://github.com/ralfebert/HttpEnums.git",
+        "state": {
+          "branch": null,
+          "revision": "645a24b8c53bcb0b4b22c40c4bfb605196c18da1",
+          "version": "0.1.1"
+        }
+      },
+      {
+        "package": "SweetURLRequest",
+        "repositoryURL": "https://github.com/ralfebert/SweetURLRequest.git",
+        "state": {
+          "branch": null,
+          "revision": "4976be0230e7ceba2d0568588b09e44e886daf6d",
+          "version": "0.1.7"
+        }
       }
     ]
   },

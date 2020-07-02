@@ -20,23 +20,23 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import CoreData
 import Foundation
 
-public enum CacheVersion {
-    case appVersion
-    case custom(String)
+@objc(QueueEntry)
+class QueueEntry: NSManagedObject {
 
-    var versionString: String {
-        switch self {
-            case .appVersion:
-                let versions = [
-                    Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
-                    Bundle.main.object(forInfoDictionaryKey: kCFBundleVersionKey as String) as? String,
-                ]
-                return versions.compactMap { $0 }.joined(separator: "-")
+    static let entityName = "QueueEntry"
 
-            case let .custom(value):
-                return value
-        }
+    static func create(context: NSManagedObjectContext) -> QueueEntry {
+        NSEntityDescription.insertNewObject(forEntityName: Self.entityName, into: context) as! QueueEntry
     }
+
+    @nonobjc class func fetchRequest() -> NSFetchRequest<QueueEntry> {
+        NSFetchRequest<QueueEntry>(entityName: Self.entityName)
+    }
+
+    @NSManaged var request: String
+    @NSManaged var date: Date
+
 }
