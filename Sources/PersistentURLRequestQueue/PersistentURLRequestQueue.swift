@@ -166,7 +166,7 @@ public class PersistentURLRequestQueue {
     func clearPauseDates() {
         self.withErrorHandling {
             let fetchRequest: NSFetchRequest<QueueEntry> = QueueEntry.fetchRequest()
-            fetchRequest.predicate = NSPredicate(format: "%@ != nil")
+            fetchRequest.predicate = NSPredicate(format: "pausedUntil != nil")
             let entries = try self.managedObjectContext.fetch(fetchRequest)
             for entry in entries {
                 entry.pausedUntil = nil
