@@ -30,9 +30,9 @@ import Reachability
 
 public class PersistentURLRequestQueue {
 
-    let name: String
-    let urlSession: URLSession
-    let queue: OperationQueue = {
+    internal let name: String
+    internal let urlSession: URLSession
+    internal let queue: OperationQueue = {
         let queue = OperationQueue()
         queue.qualityOfService = .userInitiated
         queue.maxConcurrentOperationCount = 1
@@ -40,12 +40,15 @@ public class PersistentURLRequestQueue {
         return queue
     }()
 
-    let log: OSLog
-    var clock = { Date() }
-    var subscriptions = Set<AnyCancellable>()
-    var retryTimeInterval: TimeInterval
-    var scheduleTimers: Bool = true
-    private var persistentContainer: NSPersistentContainer
+    internal let log: OSLog
+    internal var clock = { Date() }
+    internal var subscriptions = Set<AnyCancellable>()
+    internal var retryTimeInterval: TimeInterval
+    internal var scheduleTimers: Bool = true
+    internal var completionHandlers = [NSManagedObjectID: RequestCompletionHandler]()
+    internal var persistentContainer: NSPersistentContainer
+
+    public typealias RequestCompletionHandler = (_ data: Data, _ response: URLResponse) -> Void
 
     public init(name: String, urlSession: URLSession = .shared, retryTimeInterval: TimeInterval = 30, connectionStatus: AnyPublisher<Reachability.Connection, Never>) {
         self.name = name
@@ -127,13 +130,15 @@ public class PersistentURLRequestQueue {
         return result
     }
 
-    public func add(_ request: URLRequest) {
+    public func add(_ request: URLRequest, completion: RequestCompletionHandler? = nil) {
+        assert(Thread.isMainThread)
         let operation = BlockOperation {
             guard let encodedValue = self.withErrorHandling({ try self.encode(request) }) else { return }
             let entry = QueueEntry.create(context: self.managedObjectContext)
             entry.request = encodedValue
             entry.date = self.clock()
             self.save()
+            self.completionHandlers[entry.objectID] = completion
             os_log("%@ added to queue", log: self.log, type: .info, self.infoString(request: request))
             self.startProcessing()
         }
@@ -201,13 +206,27 @@ public class PersistentURLRequestQueue {
                     let request = try self.decode(item.request)
                     os_log("Processing %s", log: self.log, type: .info, self.infoString(request: request))
 
-                    let endpoint = Endpoint(request: request, urlSession: self.urlSession)
+                    let endpoint = Endpoint<(Data, URLResponse)>(
+                        request: request,
+                        urlSession: self.urlSession,
+                        validate: EndpointExpectation.expectSuccess,
+                        parse: { data, response in
+                            guard let data = data else {
+                                throw NoDataError()
+                            }
+                            return (data, response)
+                        }
+                    )
                     self.processing = true
                     endpoint.load { result in
                         os_log("Processed %s: %s", log: self.log, type: .info, self.infoString(request: request), String(describing: result))
+
                         self.queue.addOperation {
                             switch result {
-                                case .success():
+                                case let .success((data, response)):
+                                    if let completionHandler = self.completionHandlers.removeValue(forKey: item.objectID) {
+                                        completionHandler(data, response)
+                                    }
                                     self.managedObjectContext.delete(item)
                                 case .failure:
                                     item.pausedUntil = self.clock().addingTimeInterval(self.retryTimeInterval)
