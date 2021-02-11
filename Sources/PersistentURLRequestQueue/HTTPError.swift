@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2020 Ralf Ebert
+// Copyright (c) 2021 Ralf Ebert
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -20,22 +20,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import Endpoint
 import Foundation
-import os
 
-public extension PersistentURLRequestQueue {
-
-    func add<A>(endpoint: Endpoint<A>, completion: ((A) -> Void)?) {
-        self.add(endpoint.request) { data, response in
-            DispatchQueue.main.async {
-                do {
-                    completion?(try endpoint.handleResponse(data: data, response: response))
-                } catch {
-                    os_log("Error handling request: %s", type: .error, String(describing: error))
-                }
-            }
-        }
-    }
-
+struct HTTPError: Error {
+    let statusCode: Int
 }

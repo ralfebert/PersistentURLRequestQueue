@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2020 Ralf Ebert
+// Copyright (c) 2021 Ralf Ebert
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -22,7 +22,6 @@
 
 import Combine
 import CoreData
-import HttpEnums
 @testable import PersistentURLRequestQueue
 import Reachability
 import XCTest
@@ -104,7 +103,7 @@ final class PersistentURLRequestQueueTests: XCTestCase {
         queue.clock = { date }
         let url = URL(string: "https://www.example.com/a")!
 
-        var workADone = self.stubURL(url: url, status: HTTPStatusCode.internalServerError)
+        var workADone = self.stubURL(url: url, status: 500)
 
         self.queue.add(URLRequest(url: url))
 
@@ -134,7 +133,7 @@ final class PersistentURLRequestQueueTests: XCTestCase {
         let resultExpectation = expectation(description: url.absoluteString)
         TinyHTTPStubURLProtocol.urls[url] = { _ in
             defer { resultExpectation.fulfill() }
-            return StubbedResponse(response: HTTPURLResponse(url: url, statusCode: HTTPStatusCode.ok.rawValue, httpVersion: nil, headerFields: nil)!, data: result.data(using: .utf8)!)
+            return StubbedResponse(response: HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!, data: result.data(using: .utf8)!)
         }
         return resultExpectation
     }
@@ -142,15 +141,15 @@ final class PersistentURLRequestQueueTests: XCTestCase {
     func stubURLWithFailure(url: URL, message: String) {
         TinyHTTPStubURLProtocol.urls[url] = { _ in
             XCTFail(message)
-            return StubbedResponse(response: HTTPURLResponse(url: url, statusCode: HTTPStatusCode.notFound.rawValue, httpVersion: nil, headerFields: nil)!, data: "error".data(using: .utf8)!)
+            return StubbedResponse(response: HTTPURLResponse(url: url, statusCode: 404, httpVersion: nil, headerFields: nil)!, data: "error".data(using: .utf8)!)
         }
     }
 
-    func stubURL(url: URL, status: HTTPStatusCode) -> XCTestExpectation {
+    func stubURL(url: URL, status: Int) -> XCTestExpectation {
         let resultExpectation = expectation(description: url.absoluteString)
         TinyHTTPStubURLProtocol.urls[url] = { _ in
             defer { resultExpectation.fulfill() }
-            return StubbedResponse(response: HTTPURLResponse(url: url, statusCode: status.rawValue, httpVersion: nil, headerFields: nil)!, data: "error".data(using: .utf8)!)
+            return StubbedResponse(response: HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!, data: "error".data(using: .utf8)!)
         }
         return resultExpectation
     }

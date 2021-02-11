@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2020 Ralf Ebert
+// Copyright (c) 2021 Ralf Ebert
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -23,7 +23,6 @@
 import Combine
 import CoreData
 import CoreDataModelDescription
-import Endpoint
 import Foundation
 import os.log
 import Reachability
@@ -206,24 +205,24 @@ public class PersistentURLRequestQueue {
                     let request = try self.decode(item.request)
                     os_log("Processing %s", log: self.log, type: .info, self.infoString(request: request))
 
-                    let endpoint = Endpoint<(Data, URLResponse)>(
-                        request: request,
-                        urlSession: self.urlSession,
-                        validate: EndpointExpectation.expectSuccess,
-                        parse: { data, response in
-                            guard let data = data else {
-                                throw NoDataError()
+                    let endpoint = self.urlSession.dataTaskPublisher(for: request)
+                        .tryMap { data, response -> (Data, URLResponse) in
+                            if let response = response as? HTTPURLResponse {
+                                if response.statusCode != 200 {
+                                    throw HTTPError(statusCode: response.statusCode)
+                                }
                             }
                             return (data, response)
                         }
-                    )
+                        .eraseToAnyPublisher()
+
                     self.processing = true
                     endpoint.load { result in
                         os_log("Processed %s: %s", log: self.log, type: .info, self.infoString(request: request), String(describing: result))
 
                         self.queue.addOperation {
                             switch result {
-                                case let .success((data, response)):
+                                case let .success(data, response):
                                     if let completionHandler = self.completionHandlers.removeValue(forKey: item.objectID) {
                                         completionHandler(data, response)
                                     }

@@ -20,24 +20,26 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-import CoreData
-import Foundation
+import Combine
 
-@objc(QueueEntry)
-class QueueEntry: NSManagedObject {
+extension AnyPublisher {
 
-    static let entityName = "QueueEntry"
-
-    static func create(context: NSManagedObjectContext) -> QueueEntry {
-        NSEntityDescription.insertNewObject(forEntityName: Self.entityName, into: context) as! QueueEntry
+    func load(completion: @escaping (Result<Output, Failure>) -> Void) {
+        self.subscribe(
+            Subscribers.Sink(
+                receiveCompletion: { error in
+                    switch error {
+                        case .finished:
+                            break
+                        case let .failure(error):
+                            completion(.failure(error))
+                    }
+                },
+                receiveValue: { value in
+                    completion(.success(value))
+                }
+            )
+        )
     }
-
-    @nonobjc class func fetchRequest() -> NSFetchRequest<QueueEntry> {
-        NSFetchRequest<QueueEntry>(entityName: Self.entityName)
-    }
-
-    @NSManaged var request: String
-    @NSManaged var date: Date
-    @NSManaged var pausedUntil: Date?
 
 }
