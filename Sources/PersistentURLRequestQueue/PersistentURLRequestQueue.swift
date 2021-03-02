@@ -253,7 +253,7 @@ public class PersistentURLRequestQueue {
         #if DEBUG
         fatalError("PersistentQueue error: \(error)")
         #else
-        os_log("PersistentQueue error: %@", log: self.cache.log, type: .error, String(describing: error))
+        os_log("PersistentQueue error: %@", log: self.log, type: .error, String(describing: error))
         #endif
     }
 
