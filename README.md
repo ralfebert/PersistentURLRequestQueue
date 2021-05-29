@@ -2,6 +2,10 @@
 
 This package provides a serial 'persistent URLRequest queue': Send requests to the backend server, but if the app is offline or a timeout/error happens, persist the request and retry it later after a while.
 
+## Restrictions
+
+This solution is only applicable if you can persist the whole URLRequest in the app's document directory. If you need to store credentials in a more secure fashion or need to handle things like retrying with an access token that might have expired, this solution will not work.
+
 ## Setting up a queue
 
 ```swift
