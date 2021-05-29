@@ -151,22 +151,14 @@ public class PersistentURLRequestQueue: ObservableObject {
         try self.entries().forEach(self.managedObjectContext.delete)
     }
 
-    func updatePausedEntries() {
+    func clearPauseDates(after date: Date? = nil) {
         self.withErrorHandling {
             let fetchRequest: NSFetchRequest<QueueEntry> = QueueEntry.fetchRequest()
-            fetchRequest.predicate = NSPredicate(format: "%@ > pausedUntil", self.clock() as NSDate)
-            let entries = try self.managedObjectContext.fetch(fetchRequest)
-            for entry in entries {
-                entry.pausedUntil = nil
+            if let date = date {
+                fetchRequest.predicate = NSPredicate(format: "%@ > pausedUntil", date as NSDate)
+            } else {
+                fetchRequest.predicate = NSPredicate(format: "pausedUntil != nil")
             }
-            self.save()
-        }
-    }
-
-    func clearPauseDates() {
-        self.withErrorHandling {
-            let fetchRequest: NSFetchRequest<QueueEntry> = QueueEntry.fetchRequest()
-            fetchRequest.predicate = NSPredicate(format: "pausedUntil != nil")
             let entries = try self.managedObjectContext.fetch(fetchRequest)
             for entry in entries {
                 entry.pausedUntil = nil
@@ -197,11 +189,7 @@ public class PersistentURLRequestQueue: ObservableObject {
                 return
             }
             self.withErrorHandling {
-                if ignorePauseDates {
-                    self.clearPauseDates()
-                } else {
-                    self.updatePausedEntries()
-                }
+                self.clearPauseDates(after: ignorePauseDates ? nil : self.clock())
 
                 let items = try self.entries()
                 os_log("processQueueItems: %i/%i ready to process", log: self.log, type: .info, items.count, try self.allEntriesCount())
@@ -233,7 +221,7 @@ public class PersistentURLRequestQueue: ObservableObject {
                                     }
                                     self.managedObjectContext.delete(item)
                                     // if one entry was successfully submitted, immediately send the next ones even if paused
-                                    self.clearPauseDates()
+                                    self.clearPauseDates(after: nil)
                                 case .failure:
                                     item.pausedUntil = self.clock().addingTimeInterval(self.retryTimeInterval)
                                     self.scheduleTimer()
