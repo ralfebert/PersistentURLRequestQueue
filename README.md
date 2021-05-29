@@ -5,13 +5,13 @@ This package provides a serial 'persistent URLRequest queue': Send requests to t
 ## Setting up a queue
 
 ```swift
-self.queue = PersistentURLRequestQueue(name: "Tasks", urlSession: .shared, retryTimeInterval: 30)
+let queue = PersistentURLRequestQueue(name: "Tasks", urlSession: .shared, retryTimeInterval: 30)
 ```
 
 Short version:
 
 ```swift
-self.queue = PersistentURLRequestQueue(name: "Tasks")
+let queue = PersistentURLRequestQueue(name: "Tasks")
 ```
 
 ## Enqueuing a request
@@ -19,7 +19,7 @@ self.queue = PersistentURLRequestQueue(name: "Tasks")
 ```swift
 var request = URLRequest(url: URL(string: "http://www.example.com")!)
 request.httpMethod = "POST"
-self.queue.add(request)
+queue.add(request)
 ```
 
 This request will be immediately persisted and PersistentURLRequestQueue will try to send it until it got a HTTP Success (200) response code. If a request fails, it will be retried after `retryTimeInterval`. It's a serial queue, only one request will be processed at a time.
@@ -29,7 +29,7 @@ This request will be immediately persisted and PersistentURLRequestQueue will tr
 You can also be notified if the request finishes immediately in the current app session:
 
 ```swift
-self.queue.add(request) { data, response in
+queue.add(request) { data, response in
     os_log("Request was sent.")
 }
 ```
