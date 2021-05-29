@@ -25,7 +25,6 @@ import CoreData
 import CoreDataModelDescription
 import Foundation
 import os.log
-import Reachability
 import SwiftUI
 
 public class PersistentURLRequestQueue: ObservableObject {
@@ -42,7 +41,6 @@ public class PersistentURLRequestQueue: ObservableObject {
 
     internal let log: OSLog
     internal var clock = { Date() }
-    internal var subscriptions = Set<AnyCancellable>()
     internal var retryTimeInterval: TimeInterval
     internal var scheduleTimers: Bool = true
     internal var completionHandlers = [NSManagedObjectID: RequestCompletionHandler]()
@@ -50,7 +48,7 @@ public class PersistentURLRequestQueue: ObservableObject {
 
     public typealias RequestCompletionHandler = (_ data: Data, _ response: URLResponse) -> Void
 
-    public init(name: String, urlSession: URLSession = .shared, retryTimeInterval: TimeInterval = 30, connectionStatus: AnyPublisher<Reachability.Connection, Never>) {
+    public init(name: String, urlSession: URLSession = .shared, retryTimeInterval: TimeInterval = 30) {
         self.name = name
         self.log = OSLog(subsystem: "PersistentQueue", category: name)
         self.retryTimeInterval = retryTimeInterval
@@ -67,20 +65,8 @@ public class PersistentURLRequestQueue: ObservableObject {
 
         container.loadPersistentStores(completionHandler: { _, error in
 
-            connectionStatus
-                .sink { connection in
-                    switch connection {
-                        case .none, .unavailable:
-                            break
-                        case .wifi, .cellular:
-                            os_log("%s became available: Scheduling queue run", log: self.log, type: .info, String(describing: connection))
-                            self.startProcessing(ignorePauseDates: true)
-                    }
-                }
-                .store(in: &self.subscriptions)
-
             if let error = error {
-                os_log("Error with PeristentQueue storage: %@", log: self.log, type: .error, String(describing: error))
+                os_log("Error with PersistentQueue storage: %@", log: self.log, type: .error, String(describing: error))
                 fatalError(String(describing: error))
 
             }

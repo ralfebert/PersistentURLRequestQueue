@@ -23,7 +23,6 @@
 import Combine
 import CoreData
 @testable import PersistentURLRequestQueue
-import Reachability
 import XCTest
 
 extension PersistentURLRequestQueue {
@@ -45,12 +44,10 @@ extension PersistentURLRequestQueue {
 class SharedQueue {
 
     static var shared = SharedQueue()
-    var connectionStatus: CurrentValueSubject<Reachability.Connection, Never>
     var queue: PersistentURLRequestQueue
 
     private init() {
-        self.connectionStatus = .init(.wifi)
-        self.queue = PersistentURLRequestQueue(name: "Tasks", connectionStatus: self.connectionStatus.eraseToAnyPublisher())
+        self.queue = PersistentURLRequestQueue(name: "Tasks")
         self.queue.scheduleTimers = false
     }
 
