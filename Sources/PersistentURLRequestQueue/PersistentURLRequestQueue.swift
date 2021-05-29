@@ -26,8 +26,9 @@ import CoreDataModelDescription
 import Foundation
 import os.log
 import Reachability
+import SwiftUI
 
-public class PersistentURLRequestQueue {
+public class PersistentURLRequestQueue: ObservableObject {
 
     internal let name: String
     internal let urlSession: URLSession
@@ -73,8 +74,7 @@ public class PersistentURLRequestQueue {
                             break
                         case .wifi, .cellular:
                             os_log("%s became available: Scheduling queue run", log: self.log, type: .info, String(describing: connection))
-                            self.clearPauseDates()
-                            self.startProcessing()
+                            self.startProcessing(ignorePauseDates: true)
                     }
                 }
                 .store(in: &self.subscriptions)
@@ -149,7 +149,17 @@ public class PersistentURLRequestQueue {
         "\(request.httpMethod ?? "-") \(request.url?.absoluteString ?? "-")"
     }
 
-    var processing = false
+    public private(set) var processing = false {
+        didSet {
+            self.sendChangeNotification()
+        }
+    }
+
+    func sendChangeNotification() {
+        DispatchQueue.main.async {
+            self.objectWillChange.send()
+        }
+    }
 
     func removeAll() throws {
         try self.entries().forEach(self.managedObjectContext.delete)
@@ -185,21 +195,30 @@ public class PersistentURLRequestQueue {
         return try self.managedObjectContext.fetch(fetchRequest)
     }
 
-    func requestCount() throws -> Int {
-        try self.entries().count
+    public func allEntriesCount() throws -> Int {
+        let fetchRequest: NSFetchRequest<QueueEntry> = QueueEntry.fetchRequest()
+        return try self.managedObjectContext.count(for: fetchRequest)
     }
 
-    public func startProcessing() {
+    /**
+     Starts to process the items in the queue.
+     If ignorePauseDates is set to true, paused entries are immediately tried again.
+     */
+    public func startProcessing(ignorePauseDates: Bool = false) {
         self.queue.addOperation {
             if self.processing {
                 os_log("Queue processing is already in progress", log: self.log, type: .info)
                 return
             }
             self.withErrorHandling {
-                self.updatePausedEntries()
+                if ignorePauseDates {
+                    self.clearPauseDates()
+                } else {
+                    self.updatePausedEntries()
+                }
 
                 let items = try self.entries()
-                os_log("processQueueItems: %i items to process", log: self.log, type: .info, items.count)
+                os_log("processQueueItems: %i/%i ready to process", log: self.log, type: .info, items.count, try self.allEntriesCount())
 
                 if let item = items.first {
                     let request = try self.decode(item.request)
@@ -222,11 +241,13 @@ public class PersistentURLRequestQueue {
 
                         self.queue.addOperation {
                             switch result {
-                                case let .success(data, response):
+                                case let .success((data, response)):
                                     if let completionHandler = self.completionHandlers.removeValue(forKey: item.objectID) {
                                         completionHandler(data, response)
                                     }
                                     self.managedObjectContext.delete(item)
+                                    // if one entry was successfully submitted, immediately send the next ones even if paused
+                                    self.clearPauseDates()
                                 case .failure:
                                     item.pausedUntil = self.clock().addingTimeInterval(self.retryTimeInterval)
                                     self.scheduleTimer()
@@ -270,6 +291,7 @@ public class PersistentURLRequestQueue {
         self.withErrorHandling {
             try self.managedObjectContext.save()
         }
+        self.sendChangeNotification()
     }
 
 }

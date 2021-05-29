@@ -126,7 +126,7 @@ final class PersistentURLRequestQueueTests: XCTestCase {
     }
 
     func expectAllTasksDone() throws {
-        try self.waitFor(condition: { try queue.requestCount() == 0 }, timeout: 1, message: "requestCount == 0")
+        try self.waitFor(condition: { try queue.allEntriesCount() == 0 }, timeout: 1, message: "requestCount == 0")
     }
 
     func stubURL(url: URL, result: String) -> XCTestExpectation {
