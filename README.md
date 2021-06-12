@@ -2,7 +2,9 @@
 
 This package provides a serial 'persistent URLRequest queue': Send requests to the backend server, but if the app is offline or a timeout/error happens, persist the request and retry it later after a while.
 
-## Restrictions
+## Limitations
+
+This component is supposed to be used for the special case of sending requests that must not be lost. For example: selling something in the app, which can be done offline, but the backend needs to know about it eventually. The server is responsible for handling every request, otherwise it will be tried again and again (that's intentional).
 
 This solution is only applicable if you can persist the whole URLRequest in the app's document directory. If you need to store credentials in a more secure fashion or need to handle things like retrying with an access token that might have expired, this solution will not work.
 
