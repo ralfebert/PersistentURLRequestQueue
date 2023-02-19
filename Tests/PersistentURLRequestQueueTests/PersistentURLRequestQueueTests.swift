@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2021 Ralf Ebert
+// Copyright (c) 2023 Ralf Ebert
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -97,7 +97,7 @@ final class PersistentURLRequestQueueTests: XCTestCase {
 
     func testRerunFailedTask() throws {
         let date = Date()
-        queue.clock = { date }
+        self.queue.clock = { date }
         let url = URL(string: "https://www.example.com/a")!
 
         var workADone = self.stubURL(url: url, status: 500)
