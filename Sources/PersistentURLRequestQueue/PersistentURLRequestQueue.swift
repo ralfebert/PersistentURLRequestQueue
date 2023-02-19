@@ -43,16 +43,27 @@ public class PersistentURLRequestQueue: ObservableObject {
     internal var clock = { Date() }
     internal var retryTimeInterval: TimeInterval
     internal var scheduleTimers: Bool = true
+    internal var errorHandler: ErrorHandler
     internal var completionHandlers = [NSManagedObjectID: RequestCompletionHandler]()
     internal var persistentContainer: NSPersistentContainer
 
     public typealias RequestCompletionHandler = (_ data: Data, _ response: URLResponse) -> Void
+    public typealias ErrorHandler = (_ error: Error) -> Void
 
-    public init(name: String, urlSession: URLSession = .shared, retryTimeInterval: TimeInterval = 30) {
+    public init(name: String, urlSession: URLSession = .shared, retryTimeInterval: TimeInterval = 30, errorHandler: ErrorHandler? = nil) {
         self.name = name
-        self.log = OSLog(subsystem: "PersistentQueue", category: name)
+        let log = OSLog(subsystem: "PersistentQueue", category: name)
+        self.log = log
         self.retryTimeInterval = retryTimeInterval
         self.urlSession = urlSession
+        self.errorHandler = errorHandler ?? { error in
+            // Default error handling for errors that shouldn't occur normally: crash in DEBUG mode, log error otherwise
+            #if DEBUG
+            fatalError("PersistentQueue error: \(error)")
+            #else
+            os_log("PersistentQueue error: %@", log: log, type: .error, String(describing: error))
+            #endif
+        }
 
         let container = NSPersistentContainer(name: self.name, managedObjectModel: self.managedObjectModel)
 
@@ -64,11 +75,8 @@ public class PersistentURLRequestQueue: ObservableObject {
         self.persistentContainer = container
 
         container.loadPersistentStores(completionHandler: { _, error in
-
             if let error = error {
-                os_log("Error with PersistentQueue storage: %@", log: self.log, type: .error, String(describing: error))
-                fatalError(String(describing: error))
-
+                self.errorHandler(error)
             }
         })
 
@@ -243,20 +251,11 @@ public class PersistentURLRequestQueue: ObservableObject {
         }
     }
 
-    // Default error handling for errors that shouldn't occur normally: crash in DEBUG mode, log error otherwise
-    func handleError(_ error: Error) {
-        #if DEBUG
-        fatalError("PersistentQueue error: \(error)")
-        #else
-        os_log("PersistentQueue error: %@", log: self.log, type: .error, String(describing: error))
-        #endif
-    }
-
     func withErrorHandling<T>(_ block: () throws -> T) -> T? {
         do {
             return try block()
         } catch {
-            self.handleError(error)
+            self.errorHandler(error)
             return nil
         }
     }
