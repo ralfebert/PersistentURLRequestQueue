@@ -123,8 +123,7 @@ public class PersistentURLRequestQueue: ObservableObject {
         return result
     }
 
-    public func add(_ request: URLRequest, completion: RequestCompletionHandler? = nil) {
-        assert(Thread.isMainThread)
+    public func add(_ request: URLRequest, waitUntilPersisted: Bool = true, completion: RequestCompletionHandler? = nil) {
         let operation = BlockOperation {
             guard let encodedValue = self.withErrorHandling({ try self.encode(request) }) else { return }
             let entry = QueueEntry.create(context: self.managedObjectContext)
@@ -136,7 +135,9 @@ public class PersistentURLRequestQueue: ObservableObject {
             self.startProcessing()
         }
         self.queue.addOperation(operation)
-        operation.waitUntilFinished()
+        if waitUntilPersisted {
+            operation.waitUntilFinished()
+        }
     }
 
     func infoString(request: URLRequest) -> String {
