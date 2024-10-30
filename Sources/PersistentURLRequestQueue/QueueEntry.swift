@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2023 Ralf Ebert
+// Copyright (c) 2024 Ralf Ebert
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -29,11 +29,11 @@ class QueueEntry: NSManagedObject {
     static let entityName = "QueueEntry"
 
     static func create(context: NSManagedObjectContext) -> QueueEntry {
-        NSEntityDescription.insertNewObject(forEntityName: Self.entityName, into: context) as! QueueEntry
+        NSEntityDescription.insertNewObject(forEntityName: self.entityName, into: context) as! QueueEntry
     }
 
     @nonobjc class func fetchRequest() -> NSFetchRequest<QueueEntry> {
-        NSFetchRequest<QueueEntry>(entityName: Self.entityName)
+        NSFetchRequest<QueueEntry>(entityName: self.entityName)
     }
 
     @NSManaged var request: String

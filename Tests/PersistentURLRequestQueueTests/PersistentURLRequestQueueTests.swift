@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2023 Ralf Ebert
+// Copyright (c) 2024 Ralf Ebert
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -123,7 +123,7 @@ final class PersistentURLRequestQueueTests: XCTestCase {
     }
 
     func expectAllTasksDone() throws {
-        try self.waitFor(condition: { try queue.allEntriesCount() == 0 }, timeout: 1, message: "requestCount == 0")
+        try self.waitFor(condition: { try self.queue.allEntriesCount() == 0 }, timeout: 1, message: "requestCount == 0")
     }
 
     func stubURL(url: URL, result: String) -> XCTestExpectation {

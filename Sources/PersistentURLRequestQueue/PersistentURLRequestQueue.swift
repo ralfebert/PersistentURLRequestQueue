@@ -1,6 +1,6 @@
 // MIT License
 //
-// Copyright (c) 2023 Ralf Ebert
+// Copyright (c) 2024 Ralf Ebert
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -29,23 +29,25 @@ import SwiftUI
 
 public class PersistentURLRequestQueue: ObservableObject {
 
-    internal let name: String
-    internal let urlSession: URLSession
-    internal let queue: OperationQueue = {
+    let name: String
+    let urlSession: URLSession
+    let queue: OperationQueue = {
         let queue = OperationQueue()
         queue.qualityOfService = .userInitiated
         queue.maxConcurrentOperationCount = 1
         queue.name = "PersistentQueue"
+        queue.isSuspended = true
         return queue
     }()
 
-    internal let log: OSLog
-    internal var clock = { Date() }
-    internal var retryTimeInterval: TimeInterval
-    internal var scheduleTimers: Bool = true
-    internal var errorHandler: ErrorHandler
-    internal var completionHandlers = [NSManagedObjectID: RequestCompletionHandler]()
-    internal var persistentContainer: NSPersistentContainer
+    let log: OSLog
+    var clock = { Date() }
+    var retryTimeInterval: TimeInterval
+    var scheduleTimers: Bool = true
+    var errorHandler: ErrorHandler
+    var completionHandlers = [NSManagedObjectID: RequestCompletionHandler]()
+    var persistentContainer: NSPersistentContainer
+    var managedObjectContext: NSManagedObjectContext?
 
     public typealias RequestCompletionHandler = (_ data: Data, _ response: URLResponse) -> Void
     public typealias ErrorHandler = (_ error: Error) -> Void
@@ -77,7 +79,10 @@ public class PersistentURLRequestQueue: ObservableObject {
         container.loadPersistentStores(completionHandler: { _, error in
             if let error = error {
                 self.errorHandler(error)
+            } else {
+                self.managedObjectContext = container.newBackgroundContext()
             }
+            self.queue.isSuspended = false
         })
 
     }
@@ -101,10 +106,6 @@ public class PersistentURLRequestQueue: ObservableObject {
         return storeDirectory.appendingPathComponent("\(name).sqlite")
     }
 
-    private var managedObjectContext: NSManagedObjectContext {
-        self.persistentContainer.viewContext
-    }
-
     func encode(_ urlRequest: URLRequest) throws -> String {
         let archiver = NSKeyedArchiver(requiringSecureCoding: false)
         archiver.outputFormat = .xml
@@ -125,8 +126,12 @@ public class PersistentURLRequestQueue: ObservableObject {
 
     public func add(_ request: URLRequest, waitUntilPersisted: Bool = true, completion: RequestCompletionHandler? = nil) {
         let operation = BlockOperation {
+            guard let managedObjectContext = self.managedObjectContext else {
+                os_log("managedObjectContext not present", log: self.log, type: .error)
+                return
+            }
             guard let encodedValue = self.withErrorHandling({ try self.encode(request) }) else { return }
-            let entry = QueueEntry.create(context: self.managedObjectContext)
+            let entry = QueueEntry.create(context: managedObjectContext)
             entry.request = encodedValue
             entry.date = self.clock()
             self.save()
@@ -157,10 +162,23 @@ public class PersistentURLRequestQueue: ObservableObject {
     }
 
     func removeAll() throws {
-        try self.entries().forEach(self.managedObjectContext.delete)
+        self.queue.addOperation {
+            guard let managedObjectContext = self.managedObjectContext else {
+                os_log("managedObjectContext not present", log: self.log, type: .error)
+                return
+            }
+            self.withErrorHandling {
+                try self.entriesOnQueue().forEach(managedObjectContext.delete)
+            }
+        }
     }
 
-    func clearPauseDates(after date: Date? = nil) {
+    private func clearPauseDates(after date: Date? = nil) {
+        guard let managedObjectContext = self.managedObjectContext else {
+            os_log("managedObjectContext not present", log: self.log, type: .error)
+            return
+        }
+
         self.withErrorHandling {
             let fetchRequest: NSFetchRequest<QueueEntry> = QueueEntry.fetchRequest()
             if let date = date {
@@ -168,7 +186,7 @@ public class PersistentURLRequestQueue: ObservableObject {
             } else {
                 fetchRequest.predicate = NSPredicate(format: "pausedUntil != nil")
             }
-            let entries = try self.managedObjectContext.fetch(fetchRequest)
+            let entries = try managedObjectContext.fetch(fetchRequest)
             for entry in entries {
                 entry.pausedUntil = nil
             }
@@ -176,15 +194,49 @@ public class PersistentURLRequestQueue: ObservableObject {
         }
     }
 
-    func entries() throws -> [QueueEntry] {
+    private func entriesOnQueue() throws -> [QueueEntry] {
+        guard let managedObjectContext = self.managedObjectContext else {
+            os_log("managedObjectContext not present", log: self.log, type: .error)
+            return []
+        }
+
         let fetchRequest: NSFetchRequest<QueueEntry> = QueueEntry.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "pausedUntil == nil")
-        return try self.managedObjectContext.fetch(fetchRequest)
+        return try managedObjectContext.fetch(fetchRequest)
+    }
+
+    func entries() throws -> [QueueEntry] {
+        var entries: [QueueEntry] = []
+
+        self.queue.addOperations([BlockOperation {
+            self.withErrorHandling {
+                entries = try self.entriesOnQueue()
+            }
+        }], waitUntilFinished: true)
+
+        return entries
+    }
+
+    private func allEntriesCountOnQueue() throws -> Int {
+        guard let managedObjectContext = self.managedObjectContext else {
+            os_log("managedObjectContext not present", log: self.log, type: .error)
+            return 0
+        }
+
+        let fetchRequest: NSFetchRequest<QueueEntry> = QueueEntry.fetchRequest()
+        return try managedObjectContext.count(for: fetchRequest)
     }
 
     public func allEntriesCount() throws -> Int {
-        let fetchRequest: NSFetchRequest<QueueEntry> = QueueEntry.fetchRequest()
-        return try self.managedObjectContext.count(for: fetchRequest)
+        var allEntriesCount = 0
+
+        self.queue.addOperations([BlockOperation {
+            self.withErrorHandling {
+                allEntriesCount = try self.allEntriesCountOnQueue()
+            }
+        }], waitUntilFinished: true)
+
+        return allEntriesCount
     }
 
     /**
@@ -193,6 +245,11 @@ public class PersistentURLRequestQueue: ObservableObject {
      */
     public func startProcessing(ignorePauseDates: Bool = false) {
         self.queue.addOperation {
+            guard let managedObjectContext = self.managedObjectContext else {
+                os_log("managedObjectContext not present", log: self.log, type: .error)
+                return
+            }
+
             if self.processing {
                 os_log("Queue processing is already in progress", log: self.log, type: .info)
                 return
@@ -200,8 +257,8 @@ public class PersistentURLRequestQueue: ObservableObject {
             self.withErrorHandling {
                 self.clearPauseDates(after: ignorePauseDates ? nil : self.clock())
 
-                let items = try self.entries()
-                os_log("processQueueItems: %i/%i ready to process", log: self.log, type: .info, items.count, try self.allEntriesCount())
+                let items = try self.entriesOnQueue()
+                try os_log("processQueueItems: %i/%i ready to process", log: self.log, type: .info, items.count, self.allEntriesCountOnQueue())
 
                 if let item = items.first {
                     let request = try self.decode(item.request)
@@ -228,7 +285,7 @@ public class PersistentURLRequestQueue: ObservableObject {
                                     if let completionHandler = self.completionHandlers.removeValue(forKey: item.objectID) {
                                         completionHandler(data, response)
                                     }
-                                    self.managedObjectContext.delete(item)
+                                    managedObjectContext.delete(item)
                                     // if one entry was successfully submitted, immediately send the next ones even if paused
                                     self.clearPauseDates(after: nil)
                                 case .failure:
@@ -261,9 +318,14 @@ public class PersistentURLRequestQueue: ObservableObject {
         }
     }
 
-    func save() {
+    private func save() {
+        guard let managedObjectContext = self.managedObjectContext else {
+            os_log("managedObjectContext not present", log: self.log, type: .error)
+            return
+        }
+
         self.withErrorHandling {
-            try self.managedObjectContext.save()
+            try managedObjectContext.save()
         }
         self.sendChangeNotification()
     }
